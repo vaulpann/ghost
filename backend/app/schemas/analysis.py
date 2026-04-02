@@ -3,30 +3,28 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.models.analysis import AnalysisStatus, RiskLevel
-
 
 class AnalysisResponse(BaseModel):
     id: uuid.UUID
     version_id: uuid.UUID
-    status: AnalysisStatus
-    triage_result: dict | None
-    triage_flagged: bool | None
-    triage_model: str | None
-    triage_tokens_used: int | None
-    triage_completed_at: datetime | None
-    deep_analysis_result: dict | None
-    deep_analysis_model: str | None
-    deep_analysis_tokens_used: int | None
-    deep_analysis_completed_at: datetime | None
-    synthesis_result: dict | None
-    risk_score: float | None
-    risk_level: RiskLevel | None
-    summary: str | None
-    error_message: str | None
-    total_cost_usd: float | None
-    started_at: datetime | None
-    completed_at: datetime | None
+    status: str
+    triage_result: dict | None = None
+    triage_flagged: bool | None = None
+    triage_model: str | None = None
+    triage_tokens_used: int | None = None
+    triage_completed_at: datetime | None = None
+    deep_analysis_result: dict | None = None
+    deep_analysis_model: str | None = None
+    deep_analysis_tokens_used: int | None = None
+    deep_analysis_completed_at: datetime | None = None
+    synthesis_result: dict | None = None
+    risk_score: float | None = None
+    risk_level: str | None = None
+    summary: str | None = None
+    error_message: str | None = None
+    total_cost_usd: float | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime
 
     # Enriched fields
@@ -48,14 +46,14 @@ class AnalysisListResponse(BaseModel):
 
 class FeedItem(BaseModel):
     id: uuid.UUID
-    type: str  # "analysis" or "finding"
+    type: str
     package_name: str
     package_registry: str
     version_string: str
-    risk_level: RiskLevel | None
-    risk_score: float | None
-    summary: str | None
-    finding_count: int
+    risk_level: str | None = None
+    risk_score: float | None = None
+    summary: str | None = None
+    finding_count: int = 0
     created_at: datetime
 
 
