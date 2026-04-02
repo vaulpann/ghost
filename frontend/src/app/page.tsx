@@ -6,17 +6,22 @@ import type { FeedItem as FeedItemType, Stats } from "@/lib/types";
 import { FeedItem } from "@/components/feed/feed-item";
 import { cn, formatNumber } from "@/lib/utils";
 
+const PER_PAGE = 20;
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [feed, setFeed] = useState<FeedItemType[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [polling, setPolling] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = async (p: number = page) => {
     try {
-      const [statsData, feedData] = await Promise.all([getStats(), getFeed(20)]);
+      const [statsData, feedData] = await Promise.all([getStats(), getFeed(p, PER_PAGE)]);
       setStats(statsData);
       setFeed(feedData.items);
+      setTotal(feedData.total);
     } catch (e) {
       console.error("Failed to fetch dashboard data:", e);
     } finally {
@@ -26,21 +31,28 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => fetchData(), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    fetchData(page);
+  }, [page]);
 
   const handlePoll = async () => {
     setPolling(true);
     try {
       await triggerPoll();
-      await fetchData();
+      await fetchData(1);
+      setPage(1);
     } catch (e) {
       console.error("Poll failed:", e);
     } finally {
       setPolling(false);
     }
   };
+
+  const totalPages = Math.ceil(total / PER_PAGE);
 
   if (loading) {
     return (
@@ -105,9 +117,9 @@ export default function Dashboard() {
       <div className="animate-fade-in animate-fade-in-delay-2">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-[15px] font-medium text-foreground/60">Recent Activity</h2>
-          {feed.length > 0 && (
+          {total > 0 && (
             <span className="text-[11px] text-muted-foreground/50 tabular-nums">
-              {feed.length} analyses
+              {total} analyses
             </span>
           )}
         </div>
@@ -126,6 +138,71 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between animate-fade-in">
+          <p className="text-[12px] text-muted-foreground/50 tabular-nums">
+            {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Prev
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 5) {
+                p = i + 1;
+              } else if (page <= 3) {
+                p = i + 1;
+              } else if (page >= totalPages - 2) {
+                p = totalPages - 4 + i;
+              } else {
+                p = page - 2 + i;
+              }
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={cn(
+                    "w-8 h-8 rounded-lg text-[12px] font-medium transition-all",
+                    p === page
+                      ? "bg-foreground/[0.08] text-foreground"
+                      : "text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03]"
+                  )}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={page === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Next
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

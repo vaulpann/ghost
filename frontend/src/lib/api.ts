@@ -48,8 +48,10 @@ export const getAnalyses = (params?: string) =>
 export const getAnalysis = (id: string) => fetchAPI<any>(`/api/v1/analyses/${id}`);
 
 // Feed & Stats
-export const getFeed = (limit?: number) =>
-  fetchAPI<{ items: any[] }>(`/api/v1/feed${limit ? `?limit=${limit}` : ""}`);
+export const getFeed = (page: number = 1, perPage: number = 20) =>
+  fetchAPI<{ items: any[]; total: number; page: number; per_page: number }>(
+    `/api/v1/feed?page=${page}&per_page=${perPage}`
+  );
 
 export const getStats = () => fetchAPI<any>("/api/v1/stats");
 

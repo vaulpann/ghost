@@ -61,6 +61,9 @@ class FeedItem(BaseModel):
 
 class FeedResponse(BaseModel):
     items: list[FeedItem]
+    total: int
+    page: int
+    per_page: int
 
 
 class StatsResponse(BaseModel):

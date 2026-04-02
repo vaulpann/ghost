@@ -143,9 +143,16 @@ async def get_analysis(analysis_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 @router.get("/feed", response_model=FeedResponse)
 async def get_feed(
-    limit: int = Query(20, ge=1, le=100),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
+    total = (
+        await db.execute(
+            select(func.count(Analysis.id)).where(Analysis.status == "complete")
+        )
+    ).scalar() or 0
+
     result = await db.execute(
         select(
             Analysis.id,
@@ -165,7 +172,8 @@ async def get_feed(
         .where(Analysis.status == "complete")
         .group_by(Analysis.id, Package.name, Package.registry, Version.version_string)
         .order_by(Analysis.completed_at.desc())
-        .limit(limit)
+        .offset((page - 1) * per_page)
+        .limit(per_page)
     )
     rows = result.all()
 
@@ -185,7 +193,7 @@ async def get_feed(
         for row in rows
     ]
 
-    return FeedResponse(items=items)
+    return FeedResponse(items=items, total=total, page=page, per_page=per_page)
 
 
 @router.get("/stats", response_model=StatsResponse)

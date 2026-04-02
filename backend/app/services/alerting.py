@@ -62,10 +62,8 @@ async def dispatch_alerts(db: AsyncSession, analysis: Analysis) -> int:
 
     sent_count = 0
     for config in configs:
-        # Check risk level threshold
-        config_level = RISK_LEVEL_FROM_STR.get(config.min_risk_level, 3)
-        analysis_level = RISK_LEVEL_ORDER.get(analysis.risk_level, 0)
-        if analysis_level < config_level:
+        # Only alert if risk score >= 2.5
+        if (analysis.risk_score or 0) < 2.5:
             continue
 
         # Check registry filter
