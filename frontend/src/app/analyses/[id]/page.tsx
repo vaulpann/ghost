@@ -206,9 +206,14 @@ export default function AnalysisDetailPage() {
 
         {activeTab === "raw" && (
           <div className="space-y-4">
-            <CollapsibleJSON title="Triage Result" data={analysis.triage_result} />
-            <CollapsibleJSON title="Deep Analysis Result" data={analysis.deep_analysis_result} />
-            <CollapsibleJSON title="Synthesis Result" data={analysis.synthesis_result} />
+            <CollapsibleJSON title="Analysis Result" data={{
+              risk_score: analysis.risk_score,
+              risk_level: analysis.risk_level,
+              summary: analysis.summary,
+              ...(analysis.synthesis_result || {}),
+            }} />
+            {analysis.triage_result && <CollapsibleJSON title="Triage Result (legacy)" data={analysis.triage_result} />}
+            {analysis.deep_analysis_result && <CollapsibleJSON title="Deep Analysis Result (legacy)" data={analysis.deep_analysis_result} />}
           </div>
         )}
       </div>
