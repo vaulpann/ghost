@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Frontend URL (for alert links)
     frontend_url: str = "http://localhost:3000"
 
+    # Admin API key (for write endpoints and webhooks)
+    admin_api_key: str = ""
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
