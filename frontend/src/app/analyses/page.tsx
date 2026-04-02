@@ -6,14 +6,21 @@ import { getAnalyses } from "@/lib/api";
 import type { Analysis } from "@/lib/types";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 import { RiskBadge } from "@/components/analysis/risk-badge";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
+
+const PER_PAGE = 20;
 
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState("");
   const [registryFilter, setRegistryFilter] = useState("");
+
+  useEffect(() => {
+    setPage(1);
+  }, [riskFilter, registryFilter]);
 
   useEffect(() => {
     async function load() {
@@ -21,7 +28,8 @@ export default function AnalysesPage() {
         const params = new URLSearchParams();
         if (riskFilter) params.set("risk_level", riskFilter);
         if (registryFilter) params.set("registry", registryFilter);
-        params.set("per_page", "100");
+        params.set("page", String(page));
+        params.set("per_page", String(PER_PAGE));
         const data = await getAnalyses(params.toString());
         setAnalyses(data.items);
         setTotal(data.total);
@@ -32,7 +40,9 @@ export default function AnalysesPage() {
       }
     }
     load();
-  }, [riskFilter, registryFilter]);
+  }, [riskFilter, registryFilter, page]);
+
+  const totalPages = Math.ceil(total / PER_PAGE);
 
   return (
     <div className="space-y-6">
@@ -114,6 +124,71 @@ export default function AnalysesPage() {
           </div>
         )}
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between animate-fade-in">
+          <p className="text-[12px] text-white/20 tabular-nums">
+            {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setPage(page - 1)}
+              disabled={page === 1}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Prev
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let p: number;
+              if (totalPages <= 5) {
+                p = i + 1;
+              } else if (page <= 3) {
+                p = i + 1;
+              } else if (page >= totalPages - 2) {
+                p = totalPages - 4 + i;
+              } else {
+                p = page - 2 + i;
+              }
+              return (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className={cn(
+                    "w-8 h-8 rounded-lg text-[12px] font-medium transition-all",
+                    p === page
+                      ? "bg-white/[0.08] text-white/90"
+                      : "text-white/30 hover:text-white/60 hover:bg-white/[0.03]"
+                  )}
+                >
+                  {p}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={page === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Next
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
