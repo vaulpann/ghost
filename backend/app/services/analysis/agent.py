@@ -10,6 +10,7 @@ from pathlib import Path
 from agents import Agent, Runner, function_tool
 from pydantic import BaseModel, Field
 
+from app.services.registry.github import GitHubClient
 from app.services.registry.npm import NpmClient
 from app.services.registry.pypi import PyPIClient
 from app.utils.tarball import cleanup_temp_dir, create_temp_dir
@@ -72,6 +73,66 @@ async def lookup_package_info(package_name: str, registry: str) -> str:
         except Exception as e:
             return json.dumps({"error": f"Package '{package_name}' not found on PyPI: {e}"})
     return json.dumps({"error": f"Unsupported registry: {registry}"})
+
+
+@function_tool
+async def lookup_github_repo(owner_repo: str) -> str:
+    """Look up a GitHub repository's metadata. Use for dependencies that come from GitHub releases (not npm/PyPI). Provide in 'owner/repo' format (e.g., 'containernetworking/plugins'). Returns stars, description, latest release, open issues, and recent commit activity."""
+    client = GitHubClient()
+    try:
+        # Get repo metadata
+        meta = await client.get_package_metadata(owner_repo)
+
+        # Get latest release
+        latest_release = None
+        try:
+            latest = await client.get_latest_version(owner_repo)
+            latest_release = latest.version
+        except Exception:
+            pass
+
+        # Get recent commits to check activity
+        import httpx
+        from app.config import settings
+        headers = {"Accept": "application/vnd.github+json"}
+        if settings.github_token:
+            headers["Authorization"] = f"Bearer {settings.github_token}"
+
+        async with httpx.AsyncClient(timeout=15.0, headers=headers) as http:
+            # Check recent commits
+            commits_resp = await http.get(f"https://api.github.com/repos/{owner_repo}/commits?per_page=5")
+            recent_commits = []
+            if commits_resp.status_code == 200:
+                for c in commits_resp.json()[:5]:
+                    recent_commits.append({
+                        "sha": c["sha"][:8],
+                        "message": c["commit"]["message"].split("\n")[0][:100],
+                        "date": c["commit"]["committer"]["date"],
+                        "author": c["commit"]["author"]["name"],
+                    })
+
+            # Check open issues count
+            repo_resp = await http.get(f"https://api.github.com/repos/{owner_repo}")
+            open_issues = None
+            archived = False
+            if repo_resp.status_code == 200:
+                repo_data = repo_resp.json()
+                open_issues = repo_data.get("open_issues_count")
+                archived = repo_data.get("archived", False)
+
+        return json.dumps({
+            "repo": owner_repo,
+            "description": meta.description,
+            "stars": meta.weekly_downloads,  # stars stored here
+            "repository_url": meta.repository_url,
+            "latest_release": latest_release or "no releases",
+            "archived": archived,
+            "open_issues": open_issues,
+            "recent_commits": recent_commits,
+            "assessment": "ARCHIVED — no longer maintained, higher risk" if archived else "active" if recent_commits else "unknown activity",
+        })
+    except Exception as e:
+        return json.dumps({"error": f"Could not look up GitHub repo '{owner_repo}': {e}"})
 
 
 @function_tool
@@ -270,9 +331,10 @@ You have tools to explore packages. Use them systematically:
      - If it's in `go.mod` → Go module (NOT npm or PyPI — you cannot look these up with your tools, just note them)
      - If it's in `Cargo.toml` → Rust crate (NOT npm or PyPI)
      - If it's in a YAML config, shell script, or Dockerfile referencing a GitHub URL → it's a GitHub release, NOT an npm/PyPI package
-     - If the diff shows a download URL like `https://github.com/org/repo/releases/download/vX.Y.Z` → it's a GitHub release
+     - If the diff shows a download URL like `https://github.com/org/repo/releases/download/vX.Y.Z` → it's a GitHub release. Use `lookup_github_repo` to check it.
      - **NEVER look up a Go module, Rust crate, or GitHub-released binary on npm or PyPI.** They are completely different things. A Go dependency called "cni" is NOT the npm package "cni".
-   - Use `lookup_package_info` ONLY when you're confident about the correct registry (npm or pypi)
+   - Use `lookup_package_info` ONLY for npm or pypi dependencies
+   - Use `lookup_github_repo` for dependencies sourced from GitHub (Go modules, Rust crates, binary releases, etc.)
    - If it looks suspicious (low downloads, no repo, weird name), use `download_and_list_files` to get its source
    - Use `read_file_content` to inspect its install scripts, entry points, and suspicious files
    - Use `scan_for_suspicious_patterns` on any concerning files
@@ -353,6 +415,7 @@ security_agent = Agent(
     instructions=AGENT_INSTRUCTIONS,
     tools=[
         lookup_package_info,
+        lookup_github_repo,
         download_and_list_files,
         read_file_content,
         diff_package_versions,
