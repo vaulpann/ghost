@@ -1,0 +1,15 @@
+{
+  "name": "ghost-mcp",
+  "version": "0.1.0",
+  "description": "Ghost Supply Chain Security MCP Server — check packages for vulnerabilities from any AI coding tool",
+  "type": "module",
+  "bin": {
+    "ghost-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
