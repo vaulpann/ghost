@@ -4,7 +4,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const GHOST_API = process.env.GHOST_API_URL || "https://ghost-api-495743911277.us-central1.run.app";
+// Default to the public Ghost API. Override with GHOST_API_URL for self-hosted instances.
+const GHOST_API = process.env.GHOST_API_URL || "http://localhost:8000";
 
 async function ghostFetch(path) {
   const res = await fetch(`${GHOST_API}${path}`);

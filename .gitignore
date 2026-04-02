@@ -18,10 +18,13 @@ node_modules/
 out/
 .vercel
 
-# Environment
+# Environment (NEVER commit these)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.production.yaml
+*.yaml.secret
 
 # IDE
 .vscode/
