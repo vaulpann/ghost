@@ -212,15 +212,13 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
     flagged_count = (
         await db.execute(
-            select(func.count(Analysis.id)).where(Analysis.triage_flagged == True)  # noqa: E712
+            select(func.count(Analysis.id)).where(Analysis.risk_score >= 2.5)
         )
     ).scalar() or 0
 
     critical_count = (
         await db.execute(
-            select(func.count(Analysis.id)).where(
-                Analysis.risk_level.in_(["high", "critical"])
-            )
+            select(func.count(Analysis.id)).where(Analysis.risk_score >= 5.0)
         )
     ).scalar() or 0
 

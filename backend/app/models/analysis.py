@@ -66,4 +66,4 @@ class Analysis(UUIDMixin, Base):
     )
 
     version: Mapped["Version"] = relationship(back_populates="analysis")
-    findings: Mapped[list["Finding"]] = relationship(back_populates="analysis", lazy="selectin")
+    findings: Mapped[list["Finding"]] = relationship(back_populates="analysis", lazy="noload")

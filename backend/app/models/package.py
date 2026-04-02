@@ -37,4 +37,4 @@ class Package(UUIDMixin, TimestampMixin, Base):
     weekly_downloads: Mapped[int | None] = mapped_column(BigInteger)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    versions: Mapped[list["Version"]] = relationship(back_populates="package", lazy="selectin")
+    versions: Mapped[list["Version"]] = relationship(back_populates="package", lazy="noload")
