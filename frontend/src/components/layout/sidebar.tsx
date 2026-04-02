@@ -52,7 +52,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2.5">
           <img src="/ghost-logo.png" alt="Versatility Labs" className="h-7 w-7 sm:h-8 sm:w-8" />
           <div>
-            <h1 className="text-[14px] font-semibold tracking-tight">Versatility Labs</h1>
+            <h1 className="text-[15px] font-semibold tracking-tight">Ghost</h1>
             <p className="text-[10px] text-white/30 tracking-wider uppercase">Supply Chain Intel</p>
           </div>
         </div>
@@ -126,7 +126,7 @@ export function Sidebar() {
           </a>
         ))}
         <a
-          href="mailto:paul@validia.ai?subject=Versatility%20Labs%20—%20Package%20Request"
+          href="mailto:paul@validia.ai?subject=Ghost%20—%20Package%20Request"
           className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-white/30 hover:text-white/60 transition-colors"
         >
           <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
@@ -153,7 +153,7 @@ export function Sidebar() {
           </svg>
         </button>
         <img src="/ghost-logo.png" alt="Versatility Labs" className="h-6 w-6" />
-        <span className="text-[14px] font-semibold">Versatility Labs</span>
+        <span className="text-[14px] font-semibold">Ghost</span>
       </div>
 
       {/* Mobile overlay */}

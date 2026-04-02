@@ -6,7 +6,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Versatility Labs — Supply Chain Threat Intelligence",
+  title: "Ghost — Supply Chain Threat Intelligence",
   description: "Real-time LLM-powered analysis of package registry releases to detect supply chain attacks before they spread.",
   icons: {
     icon: "/favicon.png",
