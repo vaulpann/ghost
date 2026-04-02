@@ -264,13 +264,30 @@ You have tools to explore packages. Use them systematically:
 
 1. **First, understand the diff** you're given. Identify what changed.
 2. **Check for dependency changes**. If ANY dependency was added or had its version changed:
-   - Use `lookup_package_info` to check the dependency's download count and metadata
+   - **CRITICAL: Identify the CORRECT registry for each dependency.** Read the diff context carefully:
+     - If it's in `package.json` → npm
+     - If it's in `requirements.txt`, `setup.py`, `pyproject.toml`, `Pipfile` → PyPI
+     - If it's in `go.mod` → Go module (NOT npm or PyPI — you cannot look these up with your tools, just note them)
+     - If it's in `Cargo.toml` → Rust crate (NOT npm or PyPI)
+     - If it's in a YAML config, shell script, or Dockerfile referencing a GitHub URL → it's a GitHub release, NOT an npm/PyPI package
+     - If the diff shows a download URL like `https://github.com/org/repo/releases/download/vX.Y.Z` → it's a GitHub release
+     - **NEVER look up a Go module, Rust crate, or GitHub-released binary on npm or PyPI.** They are completely different things. A Go dependency called "cni" is NOT the npm package "cni".
+   - Use `lookup_package_info` ONLY when you're confident about the correct registry (npm or pypi)
    - If it looks suspicious (low downloads, no repo, weird name), use `download_and_list_files` to get its source
    - Use `read_file_content` to inspect its install scripts, entry points, and suspicious files
    - Use `scan_for_suspicious_patterns` on any concerning files
-   - If it's a version bump, use `diff_package_versions` to see what changed IN THAT DEPENDENCY
+   - If it's a version bump of an npm/pypi package, use `diff_package_versions` to see what changed
 3. **Follow the chain**. If a dependency added OTHER dependencies, investigate those too.
 4. **For the parent package diff**, focus on: install script changes, new network calls, obfuscated code, credential access.
+
+## DEPENDENCY IDENTIFICATION — READ THE CONTEXT:
+The same name can mean completely different things on different registries. Examples:
+- "cni" in kubernetes YAML → containernetworking/plugins on GitHub. NOT the npm package "cni".
+- "protobuf" in go.mod → google.golang.org/protobuf. NOT the npm package "protobuf".
+- "requests" in requirements.txt → PyPI requests. This IS the right registry.
+- "axios" in package.json → npm axios. This IS the right registry.
+
+Look at the FILE where the dependency change appears and the surrounding context (URLs, paths, comments) to determine the correct registry. If you're not sure, DO NOT look it up — just note the change and score 0.0.
 
 ## WHAT IS ROUTINE (score 0.0 — THE VAST MAJORITY OF UPDATES):
 - Dockerfile changes, CI/CD configs, Makefile, build scripts — ALWAYS 0.0
@@ -322,10 +339,12 @@ You need EVIDENCE, not suspicion. Specific code doing specific bad things.
 ## IMPORTANT:
 - Use your tools. Don't guess. If a dependency changed, LOOK AT IT.
 - But don't inflate scores based on tool limitations (e.g., can't look up Go modules).
+- **NEVER look up a non-npm/non-pypi dependency on npm/pypi.** You will find a different, unrelated package and produce a false positive.
 - A dependency with <1K downloads that makes network calls is a red flag — investigate.
 - Install scripts that curl/wget and execute are CRITICAL — but only if they download from external sources.
 - Well-known packages getting version bumps are routine.
-- You MUST investigate dependency changes. This is where real attacks hide.
+- Version bumps in build config YAML files (dependencies.yaml, .github/workflows) that reference GitHub releases are ALWAYS routine. Score 0.0.
+- You MUST investigate dependency changes — but ONLY on the correct registry.
 - Your credibility depends on precision. A false positive costs trust. Be accurate."""
 
 
