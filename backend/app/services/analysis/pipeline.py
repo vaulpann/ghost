@@ -76,14 +76,11 @@ async def run_analysis_pipeline(
         for f in agent_result.findings:
             finding = Finding(
                 analysis_id=analysis.id,
-                category=f.get("category", "general"),
-                severity=f.get("severity", "info"),
-                title=f.get("title", "Finding"),
-                description=f.get("description", ""),
-                evidence=f.get("evidence"),
-                confidence=f.get("confidence", 0.5),
-                mitre_technique=f.get("mitre_technique"),
-                remediation=f.get("remediation"),
+                category=f.category,
+                severity=f.severity,
+                title=f.title,
+                description=f.description,
+                confidence=f.confidence,
             )
             db.add(finding)
 

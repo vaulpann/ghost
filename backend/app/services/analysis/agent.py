@@ -1,17 +1,10 @@
-"""Ghost Security Agent — agentic analysis using OpenAI Agents SDK.
+"""Ghost Security Agent — agentic analysis using OpenAI Agents SDK."""
 
-The agent has tools to explore packages, download source code, diff versions,
-scan for suspicious patterns, and investigate dependency chains. It reasons
-through the analysis step by step, pulling in whatever context it needs.
-"""
-
-import asyncio
 import difflib
 import json
 import logging
 import os
 import re
-import tempfile
 from pathlib import Path
 
 from agents import Agent, Runner, function_tool
@@ -23,7 +16,6 @@ from app.utils.tarball import cleanup_temp_dir, create_temp_dir
 
 logger = logging.getLogger(__name__)
 
-# Temp dirs to clean up after analysis
 _temp_dirs: list[Path] = []
 
 
@@ -41,131 +33,110 @@ def _cleanup_all_temps():
 # ─── TOOLS ──────────────────────────────────────────────────────────────────
 
 @function_tool
-def lookup_package_info(package_name: str, registry: str) -> str:
-    """Look up a package's metadata on npm or PyPI. Returns description, weekly downloads, repository URL, and latest version. Use this to check if a dependency is well-known or suspicious."""
-    async def _run():
-        if registry == "npm":
-            client = NpmClient()
-            try:
-                meta = await client.get_package_metadata(package_name)
-                latest = await client.get_latest_version(package_name)
-                downloads = meta.weekly_downloads
-                dl_status = ""
-                if downloads is not None:
-                    if downloads < 100:
-                        dl_status = " *** EXTREMELY LOW — likely malicious or typosquat ***"
-                    elif downloads < 1000:
-                        dl_status = " *** VERY LOW — suspicious ***"
-                    elif downloads < 10000:
-                        dl_status = " (low)"
-                return json.dumps({
-                    "name": package_name,
-                    "registry": "npm",
-                    "description": meta.description,
-                    "weekly_downloads": f"{downloads:,}{dl_status}" if downloads else "unknown",
-                    "repository": meta.repository_url or "NONE",
-                    "latest_version": latest.version,
-                })
-            except Exception as e:
-                return json.dumps({"error": f"Package '{package_name}' not found on npm: {e}"})
-
-        elif registry == "pypi":
-            client = PyPIClient()
-            try:
-                meta = await client.get_package_metadata(package_name)
-                latest = await client.get_latest_version(package_name)
-                return json.dumps({
-                    "name": package_name,
-                    "registry": "pypi",
-                    "description": meta.description,
-                    "repository": meta.repository_url or "NONE",
-                    "latest_version": latest.version,
-                })
-            except Exception as e:
-                return json.dumps({"error": f"Package '{package_name}' not found on PyPI: {e}"})
-
-        return json.dumps({"error": f"Unsupported registry: {registry}"})
-
-    return asyncio.get_event_loop().run_until_complete(_run())
+async def lookup_package_info(package_name: str, registry: str) -> str:
+    """Look up a package's metadata on npm or PyPI. Returns description, weekly downloads, repository URL, and latest version."""
+    if registry == "npm":
+        client = NpmClient()
+        try:
+            meta = await client.get_package_metadata(package_name)
+            latest = await client.get_latest_version(package_name)
+            downloads = meta.weekly_downloads
+            dl_status = ""
+            if downloads is not None:
+                if downloads < 100:
+                    dl_status = " *** EXTREMELY LOW — likely malicious or typosquat ***"
+                elif downloads < 1000:
+                    dl_status = " *** VERY LOW — suspicious ***"
+                elif downloads < 10000:
+                    dl_status = " (low)"
+            return json.dumps({
+                "name": package_name, "registry": "npm",
+                "description": meta.description,
+                "weekly_downloads": f"{downloads:,}{dl_status}" if downloads else "unknown",
+                "repository": meta.repository_url or "NONE",
+                "latest_version": latest.version,
+            })
+        except Exception as e:
+            return json.dumps({"error": f"Package '{package_name}' not found on npm: {e}"})
+    elif registry == "pypi":
+        client = PyPIClient()
+        try:
+            meta = await client.get_package_metadata(package_name)
+            latest = await client.get_latest_version(package_name)
+            return json.dumps({
+                "name": package_name, "registry": "pypi",
+                "description": meta.description,
+                "repository": meta.repository_url or "NONE",
+                "latest_version": latest.version,
+            })
+        except Exception as e:
+            return json.dumps({"error": f"Package '{package_name}' not found on PyPI: {e}"})
+    return json.dumps({"error": f"Unsupported registry: {registry}"})
 
 
 @function_tool
-def download_and_list_files(package_name: str, version: str, registry: str) -> str:
-    """Download a specific version of a package and list all its files. Returns the file tree and identifies install scripts, entry points, and binary files."""
-    async def _run():
-        tmp = _track_temp(create_temp_dir(prefix=f"ghost-agent-{package_name}-{version}-"))
-        try:
-            if registry == "npm":
-                client = NpmClient()
-                extracted = await client.download_version(package_name, version, str(tmp / "src"))
-            elif registry == "pypi":
-                client = PyPIClient()
-                extracted = await client.download_version(package_name, version, str(tmp / "src"))
-            else:
-                return json.dumps({"error": f"Unsupported registry: {registry}"})
+async def download_and_list_files(package_name: str, version: str, registry: str) -> str:
+    """Download a specific version of a package and list all its files. Identifies install scripts, entry points, and binary files."""
+    tmp = _track_temp(create_temp_dir(prefix=f"ghost-agent-{package_name}-{version}-"))
+    try:
+        if registry == "npm":
+            client = NpmClient()
+            extracted = await client.download_version(package_name, version, str(tmp / "src"))
+        elif registry == "pypi":
+            client = PyPIClient()
+            extracted = await client.download_version(package_name, version, str(tmp / "src"))
+        else:
+            return json.dumps({"error": f"Unsupported registry: {registry}"})
 
-            root = Path(extracted)
-            files = []
-            install_scripts = []
-            binaries = []
-            total_lines = 0
+        root = Path(extracted)
+        files, install_scripts, binaries = [], [], []
+        total_lines = 0
 
-            for fpath in sorted(root.rglob("*")):
-                if fpath.is_file():
-                    rel = str(fpath.relative_to(root))
-                    size = fpath.stat().st_size
-                    files.append({"path": rel, "size": size})
+        for fpath in sorted(root.rglob("*")):
+            if not fpath.is_file():
+                continue
+            rel = str(fpath.relative_to(root))
+            files.append({"path": rel, "size": fpath.stat().st_size})
+            fname = fpath.name
 
-                    # Flag install scripts
-                    fname = fpath.name
-                    if fname in ("setup.py", "postinstall.js", "preinstall.js", "install.js"):
-                        install_scripts.append(rel)
-                    if fname == "package.json":
-                        try:
-                            pkg = json.loads(fpath.read_text())
-                            for hook in ("preinstall", "postinstall", "install", "prepare"):
-                                if hook in pkg.get("scripts", {}):
-                                    install_scripts.append(f"{rel} → scripts.{hook}: {pkg['scripts'][hook]}")
-                        except Exception:
-                            pass
-                    if fname == "setup.py":
-                        try:
-                            content = fpath.read_text()
-                            if "cmdclass" in content:
-                                install_scripts.append(f"{rel} → has custom cmdclass")
-                        except Exception:
-                            pass
+            if fname in ("setup.py", "postinstall.js", "preinstall.js", "install.js"):
+                install_scripts.append(rel)
+            if fname == "package.json":
+                try:
+                    pkg = json.loads(fpath.read_text())
+                    for hook in ("preinstall", "postinstall", "install", "prepare"):
+                        if hook in pkg.get("scripts", {}):
+                            install_scripts.append(f"{rel} → scripts.{hook}: {pkg['scripts'][hook]}")
+                except Exception:
+                    pass
+            if fname == "setup.py":
+                try:
+                    if "cmdclass" in fpath.read_text():
+                        install_scripts.append(f"{rel} → has custom cmdclass")
+                except Exception:
+                    pass
+            if any(fname.endswith(ext) for ext in (".exe", ".dll", ".so", ".dylib", ".wasm", ".node")):
+                binaries.append(rel)
+            if any(fname.endswith(ext) for ext in (".js", ".ts", ".py", ".mjs", ".cjs")):
+                try:
+                    total_lines += fpath.read_text(errors="replace").count("\n")
+                except Exception:
+                    pass
 
-                    # Flag binaries
-                    if any(fname.endswith(ext) for ext in (".exe", ".dll", ".so", ".dylib", ".wasm", ".node")):
-                        binaries.append(rel)
-
-                    # Count lines
-                    if any(fname.endswith(ext) for ext in (".js", ".ts", ".py", ".mjs", ".cjs")):
-                        try:
-                            total_lines += fpath.read_text(errors="replace").count("\n")
-                        except Exception:
-                            pass
-
-            result = {
-                "package": f"{package_name}@{version}",
-                "extracted_path": str(root),
-                "total_files": len(files),
-                "total_source_lines": total_lines,
-                "files": files[:100],  # Cap at 100
-                "install_scripts": install_scripts if install_scripts else "none",
-                "binary_files": binaries if binaries else "none",
-            }
-            return json.dumps(result)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    return asyncio.get_event_loop().run_until_complete(_run())
+        return json.dumps({
+            "package": f"{package_name}@{version}", "extracted_path": str(root),
+            "total_files": len(files), "total_source_lines": total_lines,
+            "files": files[:100],
+            "install_scripts": install_scripts or "none",
+            "binary_files": binaries or "none",
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 @function_tool
 def read_file_content(file_path: str, max_lines: int = 200) -> str:
-    """Read the content of a file from a downloaded package. Use this to inspect suspicious files, install scripts, or entry points. Provide the full path returned by download_and_list_files."""
+    """Read the content of a file from a downloaded package. Provide the full path returned by download_and_list_files."""
     try:
         path = Path(file_path)
         if not path.exists():
@@ -180,67 +151,58 @@ def read_file_content(file_path: str, max_lines: int = 200) -> str:
 
 
 @function_tool
-def diff_package_versions(package_name: str, old_version: str, new_version: str, registry: str) -> str:
-    """Download two versions of a package and produce a unified diff of their source code. Use this to see exactly what changed between versions of a dependency."""
-    async def _run():
-        old_dir = _track_temp(create_temp_dir(prefix=f"ghost-old-{package_name}-"))
-        new_dir = _track_temp(create_temp_dir(prefix=f"ghost-new-{package_name}-"))
+async def diff_package_versions(package_name: str, old_version: str, new_version: str, registry: str) -> str:
+    """Download two versions of a package and produce a unified diff. Use this to see what changed between dependency versions."""
+    old_dir = _track_temp(create_temp_dir(prefix=f"ghost-old-{package_name}-"))
+    new_dir = _track_temp(create_temp_dir(prefix=f"ghost-new-{package_name}-"))
+    try:
+        if registry == "npm":
+            client = NpmClient()
+        elif registry == "pypi":
+            client = PyPIClient()
+        else:
+            return json.dumps({"error": f"Unsupported registry: {registry}"})
 
-        try:
-            if registry == "npm":
-                client = NpmClient()
-            elif registry == "pypi":
-                client = PyPIClient()
-            else:
-                return json.dumps({"error": f"Unsupported registry: {registry}"})
+        old_path = Path(await client.download_version(package_name, old_version, str(old_dir)))
+        new_path = Path(await client.download_version(package_name, new_version, str(new_dir)))
 
-            old_path = Path(await client.download_version(package_name, old_version, str(old_dir)))
-            new_path = Path(await client.download_version(package_name, new_version, str(new_dir)))
+        diff_parts = []
+        all_files = set()
+        for root, _, files in os.walk(old_path):
+            for f in files:
+                all_files.add(os.path.relpath(os.path.join(root, f), old_path))
+        for root, _, files in os.walk(new_path):
+            for f in files:
+                all_files.add(os.path.relpath(os.path.join(root, f), new_path))
 
-            diff_parts = []
-            all_files = set()
+        for rel in sorted(all_files):
+            try:
+                old_lines = (old_path / rel).read_text(errors="replace").splitlines() if (old_path / rel).exists() else []
+                new_lines = (new_path / rel).read_text(errors="replace").splitlines() if (new_path / rel).exists() else []
+            except Exception:
+                continue
+            if old_lines == new_lines:
+                continue
+            diff = "\n".join(difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{rel}", tofile=f"b/{rel}", lineterm=""))
+            if diff:
+                diff_parts.append(diff)
 
-            for root, _, files in os.walk(old_path):
-                for f in files:
-                    all_files.add(os.path.relpath(os.path.join(root, f), old_path))
-            for root, _, files in os.walk(new_path):
-                for f in files:
-                    all_files.add(os.path.relpath(os.path.join(root, f), new_path))
+        full_diff = "\n\n".join(diff_parts)
+        if len(full_diff) > 50000:
+            full_diff = full_diff[:50000] + "\n\n[... truncated at 50KB ...]"
 
-            for rel in sorted(all_files):
-                old_file = old_path / rel
-                new_file = new_path / rel
-                try:
-                    old_lines = old_file.read_text(errors="replace").splitlines() if old_file.exists() else []
-                    new_lines = new_file.read_text(errors="replace").splitlines() if new_file.exists() else []
-                except Exception:
-                    continue
-                if old_lines == new_lines:
-                    continue
-                diff = "\n".join(difflib.unified_diff(old_lines, new_lines, fromfile=f"a/{rel}", tofile=f"b/{rel}", lineterm=""))
-                if diff:
-                    diff_parts.append(diff)
-
-            full_diff = "\n\n".join(diff_parts)
-            if len(full_diff) > 50000:
-                full_diff = full_diff[:50000] + "\n\n[... diff truncated at 50KB ...]"
-
-            return json.dumps({
-                "package": package_name,
-                "old_version": old_version,
-                "new_version": new_version,
-                "diff_files_changed": len(diff_parts),
-                "diff": full_diff if full_diff else "No source code changes detected.",
-            })
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    return asyncio.get_event_loop().run_until_complete(_run())
+        return json.dumps({
+            "package": package_name, "old_version": old_version, "new_version": new_version,
+            "diff_files_changed": len(diff_parts),
+            "diff": full_diff or "No source code changes detected.",
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 @function_tool
 def scan_for_suspicious_patterns(file_path: str) -> str:
-    """Scan a source file for suspicious security patterns like network calls, process execution, obfuscation, credential access, etc. Provide the full path to a file from a downloaded package."""
+    """Scan a source file for suspicious security patterns. Provide the full path from a downloaded package."""
     patterns = [
         (r'\b(fetch\(|http\.request|https\.request|XMLHttpRequest|net\.connect|urllib\.request)', "NETWORK", "Outbound network request"),
         (r'\b(child_process|subprocess|os\.system|os\.popen|exec\(|spawn\()', "PROCESS_EXEC", "Process/shell execution"),
@@ -250,44 +212,41 @@ def scan_for_suspicious_patterns(file_path: str) -> str:
         (r'(/etc/passwd|\.ssh/|\.aws/|\.npmrc|\.pypirc|\.netrc)', "SENSITIVE_PATH", "Sensitive file path access"),
         (r'(preinstall|postinstall)\s*["\']?\s*:', "INSTALL_HOOK", "Install lifecycle hook"),
         (r'(dns\.lookup|dns\.resolve|net\.createConnection|socket\.connect)', "RAW_NETWORK", "Raw network/DNS operation"),
-        (r'(String\.fromCharCode|\\x[0-9a-f]{2}|\\u[0-9a-f]{4})', "CHAR_ENCODING", "Character encoding (possible obfuscation)"),
         (r'(wget\s|curl\s|requests\.get|urllib\.urlopen)', "HTTP_FETCH", "HTTP download operation"),
     ]
-
     try:
         path = Path(file_path)
         if not path.exists():
             return json.dumps({"error": f"File not found: {file_path}"})
-
         content = path.read_text(encoding="utf-8", errors="replace")
         findings = []
-
         for pattern, category, description in patterns:
             matches = list(re.finditer(pattern, content))
             if matches:
-                for m in matches[:3]:  # Max 3 per pattern
-                    start = max(0, m.start() - 100)
-                    end = min(len(content), m.end() + 100)
-                    context = content[start:end].strip()
-                    line_num = content[:m.start()].count("\n") + 1
+                for m in matches[:3]:
+                    start, end = max(0, m.start() - 100), min(len(content), m.end() + 100)
                     findings.append({
-                        "category": category,
-                        "description": description,
-                        "line": line_num,
-                        "match": m.group(),
-                        "context": context,
+                        "category": category, "description": description,
+                        "line": content[:m.start()].count("\n") + 1,
+                        "match": m.group(), "context": content[start:end].strip(),
                     })
-
         return json.dumps({
-            "file": file_path,
-            "total_lines": content.count("\n"),
-            "findings": findings if findings else "No suspicious patterns found.",
+            "file": file_path, "total_lines": content.count("\n"),
+            "findings": findings or "No suspicious patterns found.",
         })
     except Exception as e:
         return json.dumps({"error": str(e)})
 
 
-# ─── AGENT DEFINITION ───────────────────────────────────────────────────────
+# ─── AGENT ──────────────────────────────────────────────────────────────────
+
+class SecurityFinding(BaseModel):
+    category: str = Field(description="e.g. dependency_manipulation, install_script, obfuscation, data_exfiltration, backdoor, credential_theft")
+    severity: str = Field(description="info, low, medium, high, or critical")
+    title: str = Field(description="Short descriptive title")
+    description: str = Field(description="Detailed explanation with evidence")
+    confidence: float = Field(description="0.0 to 1.0")
+
 
 class AnalysisResult(BaseModel):
     risk_score: float = Field(ge=0.0, le=10.0, description="0.0 = routine, 10.0 = active attack")
@@ -295,7 +254,7 @@ class AnalysisResult(BaseModel):
     summary: str = Field(description="2-3 sentence executive summary")
     detailed_report: str = Field(description="Full Markdown analysis report")
     recommended_action: str = Field(description="no_action, monitor, review_manually, block_update, or alert_immediately")
-    findings: list[dict] = Field(default_factory=list, description="List of security findings with category, severity, title, description, and evidence")
+    findings: list[SecurityFinding] = Field(default_factory=list, description="List of security findings")
 
 
 AGENT_INSTRUCTIONS = """You are Ghost, an expert supply chain security agent. You analyze package updates to detect supply chain attacks.
@@ -320,7 +279,7 @@ You have tools to explore packages. Use them systematically:
 - Version metadata changes, copyright updates
 - Linter configs, type annotations, refactoring
 - Lock file changes (package-lock.json, go.sum, yarn.lock)
-- Go module updates to standard libraries
+- Go module updates to standard libraries (golang.org, google.golang.org)
 
 ## WHAT IS ACTUALLY DANGEROUS (score 5.0+):
 - New dependency with <1K downloads → investigate its source code
@@ -369,13 +328,9 @@ async def run_agent_analysis(
     diff_content: str,
     weekly_downloads: int | None = None,
 ) -> tuple[AnalysisResult, dict]:
-    """Run the Ghost security agent on a package update.
-
-    Returns (result, metadata).
-    """
-    # Truncate diff if massive (agent can pull more via tools)
+    """Run the Ghost security agent on a package update."""
     if len(diff_content) > 80000:
-        diff_content = diff_content[:80000] + "\n\n[... diff truncated — use diff_package_versions tool to see full diff of specific dependencies ...]"
+        diff_content = diff_content[:80000] + "\n\n[... diff truncated — use tools to explore further ...]"
 
     prompt = f"""Analyze this package update for supply chain security threats.
 
@@ -389,19 +344,11 @@ async def run_agent_analysis(
 {diff_content}
 ```
 
-Investigate this update. If there are ANY dependency additions or version changes in the diff, you MUST use your tools to look them up and inspect their source code. Do not skip this step."""
+Investigate this update. If there are ANY dependency additions or version changes, you MUST use your tools to look them up and inspect their source code."""
 
     try:
         result = await Runner.run(security_agent, prompt)
-        output = result.final_output
-
-        # Build metadata
-        metadata = {
-            "model": "gpt-4o",
-            "agent_steps": len(result.raw_responses) if hasattr(result, 'raw_responses') else 0,
-        }
-
-        return output, metadata
-
+        metadata = {"model": "gpt-4o"}
+        return result.final_output, metadata
     finally:
         _cleanup_all_temps()
