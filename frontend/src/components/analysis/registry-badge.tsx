@@ -11,7 +11,7 @@ const REGISTRY_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export function RegistryBadge({ registry }: RegistryBadgeProps) {
-  const config = REGISTRY_CONFIG[registry] || { label: registry, color: "text-white/40 bg-white/5 border-white/10" };
+  const config = REGISTRY_CONFIG[registry] || { label: registry, color: "text-muted-foreground bg-foreground/5 border-border" };
 
   return (
     <span

@@ -48,7 +48,7 @@ export default function PackagesPage() {
       {/* Header */}
       <div className="animate-fade-in">
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">Watchlist</h1>
-        <p className="text-xs sm:text-sm text-white/30 mt-1">{total} packages under active surveillance</p>
+        <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">{total} packages under active surveillance</p>
       </div>
 
       {/* Filters */}
@@ -59,13 +59,13 @@ export default function PackagesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search packages..."
-            className="w-full rounded-xl glass border-0 bg-white/[0.03] px-4 py-2.5 text-[13px] text-white/80 placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-white/10 transition-all"
+            className="w-full rounded-xl glass border-0 bg-foreground/[0.03] px-4 py-2.5 text-[13px] text-foreground/80 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring/20 transition-all"
           />
         </div>
         <select
           value={registryFilter}
           onChange={(e) => setRegistryFilter(e.target.value)}
-          className="rounded-xl glass border-0 bg-white/[0.03] px-4 py-2.5 text-[13px] text-white/60 focus:outline-none focus:ring-1 focus:ring-white/10 appearance-none cursor-pointer"
+          className="rounded-xl glass border-0 bg-foreground/[0.03] px-4 py-2.5 text-[13px] text-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring/20 appearance-none cursor-pointer"
         >
           <option value="">All registries</option>
           <option value="npm">npm</option>
@@ -78,31 +78,31 @@ export default function PackagesPage() {
       <div className="rounded-2xl glass overflow-hidden overflow-x-auto animate-fade-in animate-fade-in-delay-2">
         <table className="w-full text-[13px]">
           <thead>
-            <tr className="border-b border-white/[0.04]">
-              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-white/25 uppercase tracking-wider">Package</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-white/25 uppercase tracking-wider">Registry</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-white/25 uppercase tracking-wider">Version</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-white/25 uppercase tracking-wider">Downloads</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-white/25 uppercase tracking-wider">Last Checked</th>
-              <th className="px-5 py-3.5 text-right text-[11px] font-medium text-white/25 uppercase tracking-wider">Status</th>
+            <tr className="border-b border-border">
+              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Package</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Registry</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Version</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Downloads</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Last Checked</th>
+              <th className="px-5 py-3.5 text-right text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/[0.03]">
+          <tbody className="divide-y divide-border/50">
             {packages.map((pkg, i) => (
               <tr
                 key={pkg.id}
-                className="group hover:bg-white/[0.02] transition-colors animate-fade-in"
+                className="group hover:bg-foreground/[0.02] transition-colors animate-fade-in"
                 style={{ animationDelay: `${i * 0.02}s` }}
               >
                 <td className="px-5 py-3.5">
                   <Link
                     href={`/packages/${pkg.id}`}
-                    className="font-medium text-white/80 group-hover:text-white transition-colors"
+                    className="font-medium text-foreground/80 group-hover:text-foreground transition-colors"
                   >
                     {pkg.name}
                   </Link>
                   {pkg.description && (
-                    <p className="text-[11px] text-white/20 truncate max-w-xs mt-0.5">
+                    <p className="text-[11px] text-muted-foreground/50 truncate max-w-xs mt-0.5">
                       {pkg.description}
                     </p>
                   )}
@@ -110,20 +110,20 @@ export default function PackagesPage() {
                 <td className="px-5 py-3.5">
                   <RegistryBadge registry={pkg.registry} />
                 </td>
-                <td className="px-5 py-3.5 font-mono text-[12px] text-white/40">
+                <td className="px-5 py-3.5 font-mono text-[12px] text-muted-foreground">
                   {pkg.latest_known_version || "—"}
                 </td>
-                <td className="px-5 py-3.5 text-[12px] text-white/25 tabular-nums">
+                <td className="px-5 py-3.5 text-[12px] text-muted-foreground/60 tabular-nums">
                   {formatNumber(pkg.weekly_downloads)}
                 </td>
-                <td className="px-5 py-3.5 text-[12px] text-white/25">
+                <td className="px-5 py-3.5 text-[12px] text-muted-foreground/60">
                   {pkg.last_checked_at ? timeAgo(pkg.last_checked_at) : "—"}
                 </td>
                 <td className="px-5 py-3.5 text-right">
                   <span
                     className={cn(
                       "inline-flex h-1.5 w-1.5 rounded-full",
-                      pkg.monitoring_enabled ? "bg-emerald-400/60" : "bg-white/10"
+                      pkg.monitoring_enabled ? "bg-emerald-400/60" : "bg-foreground/10"
                     )}
                   />
                 </td>
@@ -132,7 +132,7 @@ export default function PackagesPage() {
           </tbody>
         </table>
         {packages.length === 0 && !loading && (
-          <div className="p-12 text-center text-white/20 text-sm">
+          <div className="p-12 text-center text-muted-foreground/50 text-sm">
             No packages found.
           </div>
         )}
@@ -141,21 +141,21 @@ export default function PackagesPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between animate-fade-in">
-          <p className="text-[12px] text-white/20 tabular-nums">
+          <p className="text-[12px] text-muted-foreground/50 tabular-nums">
             {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total}
           </p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage(1)}
               disabled={page === 1}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               First
             </button>
             <button
               onClick={() => setPage(page - 1)}
               disabled={page === 1}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Prev
             </button>
@@ -177,8 +177,8 @@ export default function PackagesPage() {
                   className={cn(
                     "w-8 h-8 rounded-lg text-[12px] font-medium transition-all",
                     p === page
-                      ? "bg-white/[0.08] text-white/90"
-                      : "text-white/30 hover:text-white/60 hover:bg-white/[0.03]"
+                      ? "bg-foreground/[0.08] text-foreground"
+                      : "text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03]"
                   )}
                 >
                   {p}
@@ -188,14 +188,14 @@ export default function PackagesPage() {
             <button
               onClick={() => setPage(page + 1)}
               disabled={page === totalPages}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Next
             </button>
             <button
               onClick={() => setPage(totalPages)}
               disabled={page === totalPages}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Last
             </button>

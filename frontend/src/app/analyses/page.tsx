@@ -48,7 +48,7 @@ export default function AnalysesPage() {
     <div className="space-y-6">
       <div className="animate-fade-in">
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">Analyses</h1>
-        <p className="text-xs sm:text-sm text-white/30 mt-1">{total} security scans completed</p>
+        <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">{total} security scans completed</p>
       </div>
 
       {/* Filters */}
@@ -56,7 +56,7 @@ export default function AnalysesPage() {
         <select
           value={riskFilter}
           onChange={(e) => setRiskFilter(e.target.value)}
-          className="rounded-xl glass border-0 bg-white/[0.03] px-4 py-2.5 text-[13px] text-white/60 focus:outline-none focus:ring-1 focus:ring-white/10 appearance-none cursor-pointer"
+          className="rounded-xl glass border-0 bg-foreground/[0.03] px-4 py-2.5 text-[13px] text-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring/20 appearance-none cursor-pointer"
         >
           <option value="">All risk levels</option>
           <option value="critical">Critical</option>
@@ -68,7 +68,7 @@ export default function AnalysesPage() {
         <select
           value={registryFilter}
           onChange={(e) => setRegistryFilter(e.target.value)}
-          className="rounded-xl glass border-0 bg-white/[0.03] px-4 py-2.5 text-[13px] text-white/60 focus:outline-none focus:ring-1 focus:ring-white/10 appearance-none cursor-pointer"
+          className="rounded-xl glass border-0 bg-foreground/[0.03] px-4 py-2.5 text-[13px] text-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring/20 appearance-none cursor-pointer"
         >
           <option value="">All registries</option>
           <option value="npm">npm</option>
@@ -88,38 +88,38 @@ export default function AnalysesPage() {
           >
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5 mb-1.5">
-                <span className="font-medium text-[13px] text-white/80 group-hover:text-white transition-colors">
+                <span className="font-medium text-[13px] text-foreground/80 group-hover:text-foreground transition-colors">
                   {a.package_name}
                 </span>
                 {a.package_registry && <RegistryBadge registry={a.package_registry} />}
-                <span className="text-[11px] text-white/20 font-mono">
+                <span className="text-[11px] text-muted-foreground/50 font-mono">
                   {a.previous_version_string} &rarr; {a.version_string}
                 </span>
               </div>
-              <p className="text-[12px] text-white/30 truncate">
+              <p className="text-[12px] text-muted-foreground/70 truncate">
                 {a.summary || `Status: ${a.status}`}
               </p>
             </div>
             <div className="flex items-center gap-4 shrink-0">
               {a.finding_count > 0 && (
-                <span className="text-[11px] text-white/20 tabular-nums">
+                <span className="text-[11px] text-muted-foreground/50 tabular-nums">
                   {a.finding_count} findings
                 </span>
               )}
               {a.total_cost_usd !== null && (
-                <span className="text-[11px] text-white/15 font-mono tabular-nums">
+                <span className="text-[11px] text-muted-foreground/30 font-mono tabular-nums">
                   ${a.total_cost_usd.toFixed(4)}
                 </span>
               )}
               <RiskBadge level={a.risk_level} score={a.risk_score} />
-              <span className="text-[11px] text-white/20 w-14 text-right tabular-nums">
+              <span className="text-[11px] text-muted-foreground/50 w-14 text-right tabular-nums">
                 {timeAgo(a.created_at)}
               </span>
             </div>
           </Link>
         ))}
         {analyses.length === 0 && !loading && (
-          <div className="rounded-2xl glass p-12 text-center text-white/20 text-sm">
+          <div className="rounded-2xl glass p-12 text-center text-muted-foreground/50 text-sm">
             No analyses yet.
           </div>
         )}
@@ -128,21 +128,21 @@ export default function AnalysesPage() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between animate-fade-in">
-          <p className="text-[12px] text-white/20 tabular-nums">
+          <p className="text-[12px] text-muted-foreground/50 tabular-nums">
             {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total}
           </p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage(1)}
               disabled={page === 1}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               First
             </button>
             <button
               onClick={() => setPage(page - 1)}
               disabled={page === 1}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Prev
             </button>
@@ -164,8 +164,8 @@ export default function AnalysesPage() {
                   className={cn(
                     "w-8 h-8 rounded-lg text-[12px] font-medium transition-all",
                     p === page
-                      ? "bg-white/[0.08] text-white/90"
-                      : "text-white/30 hover:text-white/60 hover:bg-white/[0.03]"
+                      ? "bg-foreground/[0.08] text-foreground"
+                      : "text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03]"
                   )}
                 >
                   {p}
@@ -175,14 +175,14 @@ export default function AnalysesPage() {
             <button
               onClick={() => setPage(page + 1)}
               disabled={page === totalPages}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Next
             </button>
             <button
               onClick={() => setPage(totalPages)}
               disabled={page === totalPages}
-              className="px-2.5 py-1.5 rounded-lg text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-[12px] text-muted-foreground/70 hover:text-foreground/60 hover:bg-foreground/[0.03] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
             >
               Last
             </button>

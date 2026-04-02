@@ -45,7 +45,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-white/20 text-sm">Loading...</div>
+        <div className="text-muted-foreground/50 text-sm">Loading...</div>
       </div>
     );
   }
@@ -58,7 +58,7 @@ export default function Dashboard() {
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">
             Threat Overview
           </h1>
-          <p className="text-xs sm:text-sm text-white/30 mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
             Live monitoring across npm, PyPI, and GitHub
           </p>
         </div>
@@ -104,9 +104,9 @@ export default function Dashboard() {
       {/* Feed */}
       <div className="animate-fade-in animate-fade-in-delay-2">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-[15px] font-medium text-white/60">Recent Activity</h2>
+          <h2 className="text-[15px] font-medium text-foreground/60">Recent Activity</h2>
           {feed.length > 0 && (
-            <span className="text-[11px] text-white/20 tabular-nums">
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums">
               {feed.length} analyses
             </span>
           )}
@@ -114,7 +114,7 @@ export default function Dashboard() {
 
         {feed.length === 0 ? (
           <div className="rounded-2xl glass p-12 text-center">
-            <div className="text-white/15 text-sm">
+            <div className="text-muted-foreground/30 text-sm">
               No analyses yet. Waiting for package version changes.
             </div>
           </div>
@@ -147,7 +147,7 @@ function StatCard({
         accent === "yellow" && "glow-yellow border-yellow-500/10"
       )}
     >
-      <p className="text-[11px] text-white/25 uppercase tracking-wider font-medium">{label}</p>
+      <p className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-medium">{label}</p>
       <p
         className={cn(
           "text-3xl font-semibold mt-2 tabular-nums",

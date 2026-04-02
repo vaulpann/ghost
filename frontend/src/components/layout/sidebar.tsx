@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/components/layout/theme-provider";
 
 const navigation = [
   { name: "Overview", href: "/", icon: "O" },
@@ -44,6 +45,7 @@ const socials = [
 export function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   const sidebarContent = (
     <>
@@ -53,13 +55,13 @@ export function Sidebar() {
           <img src="/ghost-logo.png" alt="Versatility Labs" className="h-7 w-7 sm:h-8 sm:w-8" />
           <div>
             <h1 className="text-[15px] font-semibold tracking-tight">Ghost</h1>
-            <p className="text-[10px] text-white/30 tracking-wider uppercase">Supply Chain Intel</p>
+            <p className="text-[10px] text-muted-foreground/70 tracking-wider uppercase">Supply Chain Intel</p>
           </div>
         </div>
         {/* Close button on mobile */}
         <button
           onClick={() => setMobileOpen(false)}
-          className="md:hidden p-1 text-white/30 hover:text-white/60"
+          className="md:hidden p-1 text-muted-foreground/70 hover:text-foreground/60"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -80,8 +82,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
                 isActive
-                  ? "bg-white/[0.07] text-white"
-                  : "text-white/40 hover:text-white/70 hover:bg-white/[0.03]"
+                  ? "bg-foreground/[0.07] text-foreground"
+                  : "text-muted-foreground hover:text-foreground/70 hover:bg-foreground/[0.03]"
               )}
             >
               <span
@@ -89,7 +91,7 @@ export function Sidebar() {
                   "flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-semibold transition-colors",
                   isActive
                     ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-white/[0.04] text-white/30"
+                    : "bg-foreground/[0.04] text-muted-foreground/70"
                 )}
               >
                 {item.icon}
@@ -102,7 +104,7 @@ export function Sidebar() {
 
       {/* Social links */}
       <div className="px-3 pb-4 space-y-1">
-        <div className="border-t border-white/[0.04] pt-4 mb-2" />
+        <div className="border-t border-[hsl(var(--sidebar-border))] pt-4 mb-2" />
         <a
           href={socials[0].href}
           target="_blank"
@@ -119,7 +121,7 @@ export function Sidebar() {
             href={s.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-white/30 hover:text-white/60 transition-colors"
+            className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground/70 hover:text-foreground/60 transition-colors"
           >
             {s.icon}
             <span>{s.name}</span>
@@ -127,7 +129,7 @@ export function Sidebar() {
         ))}
         <a
           href="mailto:paul@validia.ai?subject=Ghost%20—%20Package%20Request"
-          className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-white/30 hover:text-white/60 transition-colors"
+          className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground/70 hover:text-foreground/60 transition-colors"
         >
           <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
             <path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z" />
@@ -135,7 +137,23 @@ export function Sidebar() {
           </svg>
           <span className="flex-1">Suggest a package</span>
         </a>
-        <p className="px-3 pt-3 text-[10px] text-white/15">v0.1.0</p>
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground/60 transition-colors w-full"
+        >
+          {theme === "dark" ? (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+            </svg>
+          )}
+          <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+        </button>
+        <p className="px-3 pt-3 text-[10px] text-muted-foreground/30">v0.1.0</p>
       </div>
     </>
   );
@@ -143,10 +161,10 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile header bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-white/[0.04] bg-[#0a0a0a] px-4">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-bg))] px-4">
         <button
           onClick={() => setMobileOpen(true)}
-          className="p-1 text-white/50 hover:text-white/80"
+          className="p-1 text-foreground/50 hover:text-foreground/80"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -167,7 +185,7 @@ export function Sidebar() {
       {/* Sidebar — desktop: always visible, mobile: slide in */}
       <div
         className={cn(
-          "flex flex-col border-r border-white/[0.04] bg-[#0a0a0a] z-50",
+          "flex flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-bg))] z-50",
           // Desktop
           "hidden md:flex md:w-60",
           // Mobile: overlay drawer
