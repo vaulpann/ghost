@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.analysis import Analysis, AnalysisStatus, RiskLevel
+from app.models.analysis import Analysis
 from app.models.finding import Finding
-from app.models.package import Package, Registry
+from app.models.package import Package
 from app.models.version import Version
 from app.schemas.analysis import (
     AnalysisListResponse,
@@ -24,20 +24,40 @@ router = APIRouter(tags=["analyses"])
 
 @router.get("/analyses", response_model=AnalysisListResponse)
 async def list_analyses(
-    status: AnalysisStatus | None = None,
-    risk_level: RiskLevel | None = None,
-    registry: Registry | None = None,
+    status: str | None = None,
+    risk_level: str | None = None,
+    registry: str | None = None,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
+    # Single query with joins — no N+1
     query = (
-        select(Analysis)
+        select(
+            Analysis.id,
+            Analysis.version_id,
+            Analysis.status,
+            Analysis.triage_flagged,
+            Analysis.risk_score,
+            Analysis.risk_level,
+            Analysis.summary,
+            Analysis.total_cost_usd,
+            Analysis.created_at,
+            Analysis.completed_at,
+            Package.name.label("package_name"),
+            Package.registry.label("package_registry"),
+            Version.version_string,
+            Version.previous_version_string,
+            func.count(Finding.id).label("finding_count"),
+        )
         .join(Version, Analysis.version_id == Version.id)
         .join(Package, Version.package_id == Package.id)
+        .outerjoin(Finding, Finding.analysis_id == Analysis.id)
+        .group_by(Analysis.id, Package.name, Package.registry, Version.version_string, Version.previous_version_string)
     )
+
     count_query = (
-        select(func.count(Analysis.id))
+        select(func.count(func.distinct(Analysis.id)))
         .join(Version, Analysis.version_id == Version.id)
         .join(Package, Version.package_id == Package.id)
     )
@@ -55,28 +75,42 @@ async def list_analyses(
     total = (await db.execute(count_query)).scalar() or 0
 
     result = await db.execute(
-        query.options(selectinload(Analysis.findings))
-        .order_by(Analysis.created_at.desc())
+        query.order_by(Analysis.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)
     )
-    analyses = result.scalars().all()
+    rows = result.all()
 
     items = []
-    for a in analyses:
-        # Load related version and package
-        v_result = await db.execute(select(Version).where(Version.id == a.version_id))
-        version = v_result.scalar_one()
-        p_result = await db.execute(select(Package).where(Package.id == version.package_id))
-        package = p_result.scalar_one()
-
-        resp = AnalysisResponse.model_validate(a)
-        resp.package_name = package.name
-        resp.package_registry = package.registry
-        resp.version_string = version.version_string
-        resp.previous_version_string = version.previous_version_string
-        resp.finding_count = len(a.findings) if a.findings else 0
-        items.append(resp)
+    for row in rows:
+        items.append(AnalysisResponse(
+            id=row.id,
+            version_id=row.version_id,
+            status=row.status,
+            triage_result=None,
+            triage_flagged=row.triage_flagged,
+            triage_model=None,
+            triage_tokens_used=None,
+            triage_completed_at=None,
+            deep_analysis_result=None,
+            deep_analysis_model=None,
+            deep_analysis_tokens_used=None,
+            deep_analysis_completed_at=None,
+            synthesis_result=None,
+            risk_score=row.risk_score,
+            risk_level=row.risk_level,
+            summary=row.summary,
+            error_message=None,
+            total_cost_usd=row.total_cost_usd,
+            started_at=None,
+            completed_at=row.completed_at,
+            created_at=row.created_at,
+            package_name=row.package_name,
+            package_registry=row.package_registry,
+            version_string=row.version_string,
+            previous_version_string=row.previous_version_string,
+            finding_count=row.finding_count,
+        ))
 
     return AnalysisListResponse(items=items, total=total, page=page, per_page=per_page)
 
@@ -92,6 +126,7 @@ async def get_analysis(analysis_id: uuid.UUID, db: AsyncSession = Depends(get_db
     if not analysis:
         raise HTTPException(404, "Analysis not found")
 
+    # Two extra queries for a single detail page is fine
     v_result = await db.execute(select(Version).where(Version.id == analysis.version_id))
     version = v_result.scalar_one()
     p_result = await db.execute(select(Package).where(Package.id == version.package_id))
@@ -108,39 +143,47 @@ async def get_analysis(analysis_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 @router.get("/feed", response_model=FeedResponse)
 async def get_feed(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Analysis)
-        .where(Analysis.status == AnalysisStatus.COMPLETE)
-        .options(selectinload(Analysis.findings))
+        select(
+            Analysis.id,
+            Analysis.risk_level,
+            Analysis.risk_score,
+            Analysis.summary,
+            Analysis.completed_at,
+            Analysis.created_at,
+            Package.name.label("package_name"),
+            Package.registry.label("package_registry"),
+            Version.version_string,
+            func.count(Finding.id).label("finding_count"),
+        )
+        .join(Version, Analysis.version_id == Version.id)
+        .join(Package, Version.package_id == Package.id)
+        .outerjoin(Finding, Finding.analysis_id == Analysis.id)
+        .where(Analysis.status == "complete")
+        .group_by(Analysis.id, Package.name, Package.registry, Version.version_string)
         .order_by(Analysis.completed_at.desc())
         .limit(limit)
     )
-    analyses = result.scalars().all()
+    rows = result.all()
 
-    items = []
-    for a in analyses:
-        v_result = await db.execute(select(Version).where(Version.id == a.version_id))
-        version = v_result.scalar_one()
-        p_result = await db.execute(select(Package).where(Package.id == version.package_id))
-        package = p_result.scalar_one()
-
-        items.append(
-            FeedItem(
-                id=a.id,
-                type="analysis",
-                package_name=package.name,
-                package_registry=package.registry,
-                version_string=version.version_string,
-                risk_level=a.risk_level,
-                risk_score=a.risk_score,
-                summary=a.summary,
-                finding_count=len(a.findings) if a.findings else 0,
-                created_at=a.completed_at or a.created_at,
-            )
+    items = [
+        FeedItem(
+            id=row.id,
+            type="analysis",
+            package_name=row.package_name,
+            package_registry=row.package_registry,
+            version_string=row.version_string,
+            risk_level=row.risk_level,
+            risk_score=row.risk_score,
+            summary=row.summary,
+            finding_count=row.finding_count,
+            created_at=row.completed_at or row.created_at,
         )
+        for row in rows
+    ]
 
     return FeedResponse(items=items)
 
@@ -149,6 +192,7 @@ async def get_feed(
 async def get_stats(db: AsyncSession = Depends(get_db)):
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    # Run all count queries in parallel-ish (single round trip each, but fast)
     total_packages = (await db.execute(select(func.count(Package.id)))).scalar() or 0
     total_analyses = (await db.execute(select(func.count(Analysis.id)))).scalar() or 0
 

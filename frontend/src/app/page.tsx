@@ -14,7 +14,7 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [statsData, feedData] = await Promise.all([getStats(), getFeed(50)]);
+      const [statsData, feedData] = await Promise.all([getStats(), getFeed(20)]);
       setStats(statsData);
       setFeed(feedData.items);
     } catch (e) {
