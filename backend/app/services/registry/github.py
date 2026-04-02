@@ -21,38 +21,19 @@ class GitHubClient(RegistryClient):
         self._client = httpx.AsyncClient(timeout=30.0, headers=headers)
 
     async def get_latest_version(self, package_name: str) -> VersionInfo:
-        """Check for latest release first, then fall back to latest commit on default branch."""
-        # Try releases first
-        try:
-            url = f"{GITHUB_API}/repos/{package_name}/releases/latest"
-            resp = await self._client.get(url)
-            if resp.status_code == 200:
-                data = resp.json()
-                published_at = None
-                if data.get("published_at"):
-                    published_at = datetime.fromisoformat(
-                        data["published_at"].replace("Z", "+00:00")
-                    )
-                return VersionInfo(
-                    version=data["tag_name"],
-                    published_at=published_at,
-                    tarball_url=data.get("tarball_url"),
-                )
-        except Exception:
-            pass
-
-        # Fall back to latest commit on default branch
+        """Always check latest commit on default branch.
+        This catches both releases AND plain pushes to main.
+        The version string is the short commit SHA.
+        """
         return await self._get_latest_commit(package_name)
 
     async def _get_latest_commit(self, package_name: str) -> VersionInfo:
         """Get the latest commit SHA on the default branch."""
-        # First get the default branch name
         repo_url = f"{GITHUB_API}/repos/{package_name}"
         resp = await self._client.get(repo_url)
         resp.raise_for_status()
         default_branch = resp.json().get("default_branch", "main")
 
-        # Get latest commit
         commits_url = f"{GITHUB_API}/repos/{package_name}/commits?sha={default_branch}&per_page=1"
         resp = await self._client.get(commits_url)
         resp.raise_for_status()
@@ -62,7 +43,7 @@ class GitHubClient(RegistryClient):
             raise ValueError(f"No commits found for {package_name}")
 
         commit = commits[0]
-        sha = commit["sha"][:12]  # Short SHA as version
+        sha_short = commit["sha"][:12]
         committed_at = None
         if commit.get("commit", {}).get("committer", {}).get("date"):
             committed_at = datetime.fromisoformat(
@@ -70,7 +51,7 @@ class GitHubClient(RegistryClient):
             )
 
         return VersionInfo(
-            version=sha,
+            version=sha_short,
             published_at=committed_at,
             tarball_url=f"{GITHUB_API}/repos/{package_name}/tarball/{commit['sha']}",
         )
@@ -119,7 +100,7 @@ class GitHubClient(RegistryClient):
             name=package_name,
             description=data.get("description"),
             repository_url=data.get("html_url"),
-            weekly_downloads=data.get("stargazers_count"),  # stars as proxy
+            weekly_downloads=data.get("stargazers_count"),
             latest_version=None,
         )
 
