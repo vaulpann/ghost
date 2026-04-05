@@ -9,6 +9,7 @@ import { useTheme } from "@/components/layout/theme-provider";
 const navigation = [
   { name: "Overview", href: "/", icon: "O" },
   { name: "Watchlist", href: "/packages", icon: "W" },
+  { name: "Vulns", href: "/vulnerabilities", icon: "!" },
   { name: "Analyses", href: "/analyses", icon: "A" },
 ];
 

@@ -72,3 +72,6 @@ class StatsResponse(BaseModel):
     critical_count: int
     avg_risk_score: float | None
     total_findings: int
+    total_vulnerability_scans: int = 0
+    total_vulnerabilities: int = 0
+    critical_vulnerabilities: int = 0

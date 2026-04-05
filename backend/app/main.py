@@ -30,7 +30,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    from app.routers import alerts, analyses, findings, health, packages, versions, webhooks
+    from app.routers import (
+        alerts, analyses, findings, health, packages,
+        versions, vulnerabilities, vulnerability_scans, webhooks,
+    )
 
     app.include_router(health.router)
     app.include_router(packages.router, prefix="/api/v1")
@@ -38,6 +41,8 @@ def create_app() -> FastAPI:
     app.include_router(analyses.router, prefix="/api/v1")
     app.include_router(findings.router, prefix="/api/v1")
     app.include_router(alerts.router, prefix="/api/v1")
+    app.include_router(vulnerability_scans.router, prefix="/api/v1")
+    app.include_router(vulnerabilities.router, prefix="/api/v1")
     app.include_router(webhooks.router, prefix="/api/v1")
 
     return app

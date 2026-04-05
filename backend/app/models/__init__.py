@@ -4,6 +4,8 @@ from app.models.base import Base
 from app.models.finding import Finding
 from app.models.package import Package
 from app.models.version import Version
+from app.models.vulnerability import Vulnerability
+from app.models.vulnerability_scan import VulnerabilityScan
 
 __all__ = [
     "Base",
@@ -13,4 +15,6 @@ __all__ = [
     "Finding",
     "AlertConfig",
     "AlertHistory",
+    "VulnerabilityScan",
+    "Vulnerability",
 ]

@@ -80,3 +80,20 @@ export const deleteAlert = (id: string) =>
 // Polling trigger
 export const triggerPoll = () =>
   fetchAPI<any>("/api/v1/webhooks/poll", { method: "POST" });
+
+// Vulnerabilities
+export const getVulnerabilities = (params?: string) =>
+  fetchAPI<{ items: any[]; total: number; page: number; per_page: number }>(
+    `/api/v1/vulnerabilities${params ? `?${params}` : ""}`
+  );
+
+export const getVulnerability = (id: string) =>
+  fetchAPI<any>(`/api/v1/vulnerabilities/${id}`);
+
+export const getVulnerabilityScans = (params?: string) =>
+  fetchAPI<{ items: any[]; total: number; page: number; per_page: number }>(
+    `/api/v1/vulnerability-scans${params ? `?${params}` : ""}`
+  );
+
+export const getPackageVulnerabilities = (packageId: string) =>
+  fetchAPI<any[]>(`/api/v1/packages/${packageId}/vulnerabilities`);

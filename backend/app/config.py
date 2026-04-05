@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # Admin API key (for write endpoints and webhooks)
     admin_api_key: str = ""
 
+    # Audit Worker (GCE VM)
+    audit_worker_url: str = ""
+    audit_worker_api_key: str = ""
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

@@ -117,6 +117,56 @@ export interface Stats {
   critical_count: number;
   avg_risk_score: number | null;
   total_findings: number;
+  total_vulnerability_scans: number;
+  total_vulnerabilities: number;
+  critical_vulnerabilities: number;
+}
+
+export interface VulnerabilityScan {
+  id: string;
+  package_id: string;
+  version_string: string;
+  status: string;
+  trigger: string;
+  source_size_bytes: number | null;
+  source_file_count: number | null;
+  total_cost_usd: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  package_name: string | null;
+  package_registry: string | null;
+  vulnerability_count: number;
+}
+
+export interface Vulnerability {
+  id: string;
+  scan_id: string;
+  package_id: string;
+  category: string;
+  subcategory: string | null;
+  severity: string;
+  title: string;
+  description: string;
+  file_path: string | null;
+  line_start: number | null;
+  line_end: number | null;
+  code_snippet: string | null;
+  poc_code: string | null;
+  poc_description: string | null;
+  attack_vector: string | null;
+  impact: string | null;
+  cvss_score: number | null;
+  cwe_id: string | null;
+  confidence: number;
+  validated: boolean;
+  false_positive: boolean;
+  remediation: string | null;
+  created_at: string;
+  package_name: string | null;
+  package_registry: string | null;
+  version_string: string | null;
 }
 
 export interface AlertConfig {

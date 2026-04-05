@@ -11,6 +11,8 @@ from app.models.analysis import Analysis
 from app.models.finding import Finding
 from app.models.package import Package
 from app.models.version import Version
+from app.models.vulnerability import Vulnerability
+from app.models.vulnerability_scan import VulnerabilityScan
 from app.schemas.analysis import (
     AnalysisListResponse,
     AnalysisResponse,
@@ -230,6 +232,18 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
     total_findings = (await db.execute(select(func.count(Finding.id)))).scalar() or 0
 
+    # Vulnerability stats
+    total_vuln_scans = (await db.execute(select(func.count(VulnerabilityScan.id)))).scalar() or 0
+    total_vulns = (await db.execute(
+        select(func.count(Vulnerability.id)).where(Vulnerability.validated == True, Vulnerability.false_positive == False)  # noqa: E712
+    )).scalar() or 0
+    critical_vulns = (await db.execute(
+        select(func.count(Vulnerability.id)).where(
+            Vulnerability.validated == True, Vulnerability.false_positive == False,  # noqa: E712
+            Vulnerability.severity.in_(["critical", "high"])
+        )
+    )).scalar() or 0
+
     return StatsResponse(
         total_packages=total_packages,
         total_analyses=total_analyses,
@@ -238,4 +252,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         critical_count=critical_count,
         avg_risk_score=round(avg_risk, 2) if avg_risk else None,
         total_findings=total_findings,
+        total_vulnerability_scans=total_vuln_scans,
+        total_vulnerabilities=total_vulns,
+        critical_vulnerabilities=critical_vulns,
     )
