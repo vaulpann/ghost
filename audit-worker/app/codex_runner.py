@@ -24,11 +24,21 @@ async def run_codex(
     model = model or settings.codex_discovery_model
     timeout = timeout_secs or settings.codex_timeout_secs
 
+    # Use `codex exec` for non-interactive mode
+    # --full-auto: auto-approve file reads and commands in sandbox
+    # --json: output JSONL events to stdout
+    # --skip-git-repo-check: source dirs aren't git repos
+    # -C: set working directory
+    # -o: write final agent message to a temp file
+    output_file = os.path.join(working_dir, ".ghost-codex-output.txt")
+
     cmd = [
-        "codex",
+        "codex", "exec",
         "--model", model,
-        "--approval-mode", "full-auto",
-        "--quiet",
+        "--full-auto",
+        "--skip-git-repo-check",
+        "-C", working_dir,
+        "-o", output_file,
         prompt,
     ]
 
@@ -40,7 +50,6 @@ async def run_codex(
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            cwd=working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
@@ -58,8 +67,18 @@ async def run_codex(
             proc.returncode, len(stdout), len(stderr), duration,
         )
 
+        # Read the final message from the output file (more reliable than stdout)
+        final_output = ""
+        if os.path.exists(output_file):
+            try:
+                with open(output_file, "r") as f:
+                    final_output = f.read()
+                os.unlink(output_file)
+            except Exception:
+                pass
+
         return {
-            "stdout": stdout.decode(errors="replace"),
+            "stdout": final_output or stdout.decode(errors="replace"),
             "stderr": stderr.decode(errors="replace"),
             "exit_code": proc.returncode,
             "duration_secs": duration,
