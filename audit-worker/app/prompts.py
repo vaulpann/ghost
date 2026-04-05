@@ -117,17 +117,32 @@ YOUR TASK:
 2. Read the code and the surrounding context (at least 50 lines around)
 3. Trace the COMPLETE data flow — from user input to the dangerous sink
 4. Check for ANY mitigations: input validation, sanitization, encoding, type checking, WAF, etc.
-5. Determine if this is ACTUALLY exploitable in practice
+5. **CRITICAL: Don't just confirm the pattern exists — actually test whether the exploit WORKS.**
+   - If the claim is "library X allows Y when configured with Z", go READ library X's source code to verify
+   - If a dependency is supposed to be vulnerable, check the ACTUAL version being used — modern versions may have fixed it
+   - If the claim involves prototype pollution, actually trace whether __proto__ or constructor.prototype reaches Object.prototype, or if the library strips those keys internally
+   - If the claim involves injection, verify the input actually reaches the sink WITHOUT being sanitized along the way
+6. Check if this pattern has been publicly evaluated and dismissed by the project maintainers
+7. Determine if this is ACTUALLY exploitable in practice — not just theoretically scary-looking
+
+CRITICAL VALIDATION RULES:
+- A code pattern that LOOKS dangerous but is mitigated by the underlying library is a FALSE POSITIVE
+- "allowPrototypes: true" in a parser does NOT mean prototype pollution if the parser itself strips __proto__ keys
+- Hardcoded secrets in example/tutorial/test files are FALSE POSITIVES — they're not production code
+- A dependency having a CVE does NOT mean the vulnerability is exploitable in this context — the CVE may have been rejected or the usage may not trigger it
+- If you cannot write a PoC that ACTUALLY demonstrates the exploit end-to-end (not just shows the pattern exists), mark it as REJECTED
 
 If this IS a real vulnerability:
-- Write a WORKING proof-of-concept exploit
-- The PoC must be something someone could actually run
+- Write a WORKING proof-of-concept exploit that ACTUALLY demonstrates exploitation
+- The PoC must produce observable evidence of the vuln (e.g., leaked data, modified prototype, executed command)
+- If your PoC would just show "the function was called" but not "the attack succeeded", it's not a real PoC — REJECT
 - Assign a CVSS 3.1 score
 - Provide specific remediation steps with code examples
 
 If this is a FALSE POSITIVE:
 - Explain SPECIFICALLY what prevents exploitation
-- Point to the exact code that mitigates it
+- Point to the exact code or library behavior that mitigates it
+- If the underlying library handles the dangerous case safely, show HOW it does so
 
 Output as JSON:
 {{
