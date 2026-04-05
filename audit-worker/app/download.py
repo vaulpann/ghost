@@ -60,10 +60,11 @@ async def download_package_source(
                     zf.extract(name, dest_dir)
         else:
             with tarfile.open(tmp_archive, "r:*") as tar:
-                for member in tar.getmembers():
-                    if member.name.startswith("/") or ".." in member.name:
-                        continue
-                tar.extractall(dest_dir, filter="data")
+                safe_members = [
+                    m for m in tar.getmembers()
+                    if not m.name.startswith("/") and ".." not in m.name
+                ]
+                tar.extractall(dest_dir, members=safe_members)
     finally:
         tmp_archive.unlink(missing_ok=True)
 
