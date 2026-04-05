@@ -1,152 +1,142 @@
-DISCOVERY_PROMPT = """You are Ghost, a vulnerability researcher performing a comprehensive security audit of this package's full source code.
+# Vulnerability categories to scan for, each gets its own targeted Codex session
+VULN_CATEGORIES = [
+    {
+        "id": "rce",
+        "name": "Remote Code Execution",
+        "prompt": "A security researcher claims there is a Remote Code Execution (RCE) vulnerability in this codebase — through command injection, code injection, eval/exec with user input, or unsafe deserialization. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no RCE here, say so.",
+    },
+    {
+        "id": "sql_injection",
+        "name": "SQL Injection",
+        "prompt": "A security researcher claims there is a SQL injection vulnerability in this codebase — through string concatenation in SQL queries, ORM misuse, or raw query construction with user input. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no SQL injection here, say so.",
+    },
+    {
+        "id": "xss",
+        "name": "Cross-Site Scripting",
+        "prompt": "A security researcher claims there is an XSS vulnerability in this codebase — through unescaped user input in HTML templates, innerHTML assignments, or DOM manipulation with unsanitized data. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no XSS here, say so.",
+    },
+    {
+        "id": "ssrf",
+        "name": "Server-Side Request Forgery",
+        "prompt": "A security researcher claims there is an SSRF vulnerability in this codebase — through user-controlled URLs being fetched server-side without validation, or internal services being accessible via crafted requests. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no SSRF here, say so.",
+    },
+    {
+        "id": "path_traversal",
+        "name": "Path Traversal",
+        "prompt": "A security researcher claims there is a path traversal / directory traversal vulnerability in this codebase — through user input being used in file paths without sanitization, allowing access to files outside the intended directory. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no path traversal here, say so.",
+    },
+    {
+        "id": "authentication",
+        "name": "Authentication & Access Control",
+        "prompt": "A security researcher claims there are authentication or access control vulnerabilities in this codebase — through broken authentication, missing authorization checks, hardcoded credentials, JWT misconfigurations (none algorithm, weak secret), privilege escalation, or IDOR. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there are no auth vulnerabilities here, say so.",
+    },
+    {
+        "id": "deserialization",
+        "name": "Insecure Deserialization",
+        "prompt": "A security researcher claims there is an insecure deserialization vulnerability in this codebase — through pickle.loads, yaml.load (without SafeLoader), JSON.parse with unsafe revivers, or other deserialization of untrusted data. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no deserialization vulnerability here, say so.",
+    },
+    {
+        "id": "xxe",
+        "name": "XML External Entity Injection",
+        "prompt": "A security researcher claims there is an XXE vulnerability in this codebase — through XML parsing that allows external entity resolution, leading to file disclosure or SSRF. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no XXE here, say so.",
+    },
+    {
+        "id": "secrets",
+        "name": "Exposed Secrets & Credentials",
+        "prompt": "A security researcher claims there are exposed secrets in this codebase — hardcoded API keys, passwords, tokens, private keys, or credentials in source files, config files, or environment defaults. Was he right? If so, show me exactly where they are, which files, which lines, and what the exposed secrets are. If there are no exposed secrets, say so.",
+    },
+    {
+        "id": "prototype_pollution",
+        "name": "Prototype Pollution",
+        "prompt": "A security researcher claims there is a prototype pollution vulnerability in this codebase — through unsafe object merging, deep clone operations with user input, or __proto__ manipulation. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there is no prototype pollution here, say so.",
+    },
+    {
+        "id": "race_condition",
+        "name": "Race Conditions & TOCTOU",
+        "prompt": "A security researcher claims there are race condition or TOCTOU vulnerabilities in this codebase — through concurrent access without proper locking, file operations with time-of-check-to-time-of-use gaps, or non-atomic operations that should be atomic. Was he right? If so, show me exactly where it is, which file, which line, the vulnerable code, and how an attacker would exploit it. If there are no race conditions here, say so.",
+    },
+]
+
+# Wrapper that structures the output request
+DISCOVERY_WRAPPER = """You are investigating the following security concern in this codebase:
 
 Package: {package_name} ({registry})
 Version: {version}
+Category: {category_name}
 
-SCAN FOR ALL OF THESE VULNERABILITY CATEGORIES:
+{category_prompt}
 
-1. CODE EXECUTION & INJECTION:
-   - Remote Code Execution (RCE)
-   - SQL Injection (SQLi)
-   - Command Injection / OS Command Injection
-   - Code Injection (eval, exec with user input)
-   - Server-Side Template Injection (SSTI)
-   - Cross-Site Scripting (XSS) - stored, reflected, DOM-based
-   - LDAP Injection
-   - XML External Entity (XXE) Injection
-   - NoSQL Injection
+IMPORTANT:
+- Read the actual source code files. Don't guess — open files and trace the code paths.
+- Start with entry points: package.json main/bin, setup.py entry_points, __init__.py, index.js, app.py, main.go, etc.
+- Trace user-controllable inputs to dangerous sinks.
+- If you find something, give me the EXACT file path, line numbers, and the vulnerable code.
 
-2. AUTHENTICATION & ACCESS:
-   - Broken Authentication (weak password handling, missing MFA)
-   - Privilege Escalation (horizontal and vertical)
-   - Insecure Direct Object References (IDOR)
-   - Broken Access Control
-   - Session Hijacking / Fixation
-   - JWT Misconfigurations (none algorithm, weak secret, no expiry)
-   - Hardcoded Credentials
-
-3. DATA EXPOSURE:
-   - Sensitive Data Leakage (tokens, keys, PII in logs)
-   - Directory Traversal / Path Traversal
-   - Server-Side Request Forgery (SSRF)
-   - Information Disclosure (stack traces, debug info, version info)
-   - Misconfigured CORS
-   - Insecure Deserialization (pickle, yaml.load, JSON.parse with reviver)
-
-4. LOGIC & DESIGN FLAWS:
-   - Race Conditions
-   - TOCTOU (Time-of-Check to Time-of-Use)
-   - Business Logic Flaws
-   - Improper Input Validation
-   - Open Redirects
-   - CSRF (Cross-Site Request Forgery)
-   - Prototype Pollution (JavaScript)
-   - ReDoS (Regular Expression Denial of Service)
-
-5. MEMORY & BINARY (if applicable — C, C++, Rust unsafe):
-   - Buffer Overflows
-   - Heap Overflows
-   - Use-After-Free
-   - Integer Overflows
-   - Format String Vulnerabilities
-
-6. SUPPLY CHAIN & CONFIGURATION:
-   - Dependency Confusion vectors
-   - Exposed Secrets/Credentials in source
-   - Insecure Default Configurations
-   - Missing Security Headers
-   - Overly Permissive File Permissions
-
-METHODOLOGY:
-1. Start by reading the package entry points and understanding the codebase structure
-2. Trace user-controllable inputs through the codebase to dangerous sinks
-3. Check every use of dangerous functions (eval, exec, subprocess, SQL queries, file operations)
-4. Review authentication and authorization logic
-5. Look for hardcoded secrets, API keys, credentials
-6. Check serialization/deserialization for unsafe patterns
-7. Review network-facing code for SSRF, open redirect, XSS
-8. Check for race conditions in concurrent code
-
-OUTPUT FORMAT — respond with ONLY valid JSON, no other text:
+After your investigation, output your findings as JSON in this EXACT format:
 {{
+  "found": true,
   "vulnerabilities": [
     {{
-      "category": "rce",
-      "subcategory": "command_injection",
+      "category": "{category_id}",
+      "subcategory": "specific type like command_injection",
       "severity": "critical",
-      "title": "Command injection via unsanitized user input in exec()",
-      "description": "Detailed description of the vulnerability and how it works",
+      "title": "Short descriptive title",
+      "description": "Detailed explanation of the vulnerability",
       "file_path": "relative/path/to/file.js",
       "line_start": 42,
       "line_end": 45,
-      "code_snippet": "the actual vulnerable code from the file",
-      "attack_vector": "An attacker can inject shell commands by passing...",
-      "impact": "Full remote code execution on the server",
+      "code_snippet": "the exact vulnerable code copied from the file",
+      "attack_vector": "How an attacker would exploit this",
+      "impact": "What happens when exploited",
       "cwe_id": "CWE-78",
       "confidence": 0.9
     }}
   ],
-  "summary": "Brief summary of the audit findings",
-  "files_analyzed": 42,
-  "total_lines_analyzed": 15000
+  "files_analyzed": ["list", "of", "files", "you", "actually", "read"]
 }}
 
-IMPORTANT:
-- Only report REAL vulnerabilities with specific file paths and line numbers
-- Include the actual vulnerable code snippet from the file
-- Do NOT report code quality issues, style problems, or theoretical concerns
-- Each vulnerability must have a clear attack vector showing how it can be exploited
-- Be thorough — check every file, not just the obvious entry points"""
+If you find NOTHING after a thorough search, output:
+{{
+  "found": false,
+  "vulnerabilities": [],
+  "reasoning": "Explain why this vulnerability type is not present",
+  "files_analyzed": ["list", "of", "files", "you", "actually", "read"]
+}}"""
 
 
-VALIDATION_PROMPT = """You are Ghost, a vulnerability validation specialist. You are reviewing previously discovered vulnerabilities to confirm they are REAL and generate proof-of-concept exploit code.
+VALIDATION_PROMPT = """A previous security scan flagged the following vulnerability in this codebase. Your job is to VERIFY whether this is a real, exploitable vulnerability or a false positive.
 
 Package: {package_name} ({registry})
 Version: {version}
 
-PREVIOUSLY DISCOVERED VULNERABILITIES:
-{discovery_json}
+CLAIMED VULNERABILITY:
+{vulnerability_json}
 
-FOR EACH VULNERABILITY:
-1. Navigate to the exact file and line number
-2. Read the surrounding code to understand the full context
-3. Trace the data flow — can user input ACTUALLY reach the vulnerable sink?
-4. Check for sanitization, validation, encoding, or other mitigations
-5. Check if the vulnerability requires specific conditions (auth, config, etc.)
-6. If the vulnerability is REAL and EXPLOITABLE:
-   - Write a proof-of-concept that demonstrates it
-   - Assign a CVSS score
-   - Provide specific remediation steps
-7. If the vulnerability is a FALSE POSITIVE:
-   - Explain specifically why it's not exploitable
+YOUR TASK:
+1. Navigate to the EXACT file and line number mentioned
+2. Read the code and the surrounding context (at least 50 lines around)
+3. Trace the COMPLETE data flow — from user input to the dangerous sink
+4. Check for ANY mitigations: input validation, sanitization, encoding, type checking, WAF, etc.
+5. Determine if this is ACTUALLY exploitable in practice
 
-OUTPUT FORMAT — respond with ONLY valid JSON, no other text:
+If this IS a real vulnerability:
+- Write a WORKING proof-of-concept exploit
+- The PoC must be something someone could actually run
+- Assign a CVSS 3.1 score
+- Provide specific remediation steps with code examples
+
+If this is a FALSE POSITIVE:
+- Explain SPECIFICALLY what prevents exploitation
+- Point to the exact code that mitigates it
+
+Output as JSON:
 {{
-  "validated": [
-    {{
-      "original_index": 0,
-      "validated": true,
-      "confidence": 0.95,
-      "reasoning": "Confirmed: user input from req.params flows directly to child_process.exec() on line 45 with no sanitization. The input.replace() on line 43 only removes spaces, not shell metacharacters.",
-      "severity_adjusted": "critical",
-      "poc_code": "// PoC: Send this request to trigger RCE\\ncurl 'http://target/api/run?cmd=id%26%26cat+/etc/passwd'",
-      "poc_description": "This PoC demonstrates command injection by appending a second command using && URL-encoded as %26%26. The server executes both commands.",
-      "cvss_score": 9.8,
-      "remediation": "Replace child_process.exec() with child_process.execFile() and pass arguments as an array. Never interpolate user input into shell commands."
-    }}
-  ],
-  "rejected": [
-    {{
-      "original_index": 2,
-      "validated": false,
-      "reasoning": "False positive: the input is validated by validateEmail() on line 28 which uses a strict regex that prevents any injection. The SQL query on line 35 also uses parameterized queries via $1 placeholders."
-    }}
-  ]
-}}
-
-VALIDATION RULES:
-- If you cannot write a WORKING proof-of-concept, mark it as rejected
-- If the attack requires unrealistic conditions (e.g., admin access AND source code modification), reject it
-- PoC code should be runnable — include the full command or script
-- CVSS scoring should follow CVSS v3.1 guidelines
-- Be STRICT — false positives damage credibility. When in doubt, reject."""
+  "validated": true or false,
+  "confidence": 0.0 to 1.0,
+  "reasoning": "Detailed explanation with specific code references",
+  "severity_adjusted": "critical/high/medium/low",
+  "poc_code": "Working proof-of-concept code or script (null if false positive)",
+  "poc_description": "How to run the PoC and what it demonstrates",
+  "cvss_score": 9.8,
+  "remediation": "Specific fix with code example"
+}}"""
