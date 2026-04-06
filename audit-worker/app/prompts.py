@@ -235,3 +235,78 @@ IMPORTANT RULES:
 - Hardcoded secrets in example/tutorial files are informational, not critical.
 - Be specific to THIS software — reference actual file paths, actual code, actual deployment patterns.
 - Your credibility depends on accuracy. An honest medium-severity finding is worth more than an inflated critical."""
+
+
+PUZZLE_PROMPT = """You are generating adversarial validation challenges for a vulnerability finding. These challenges are designed to STRESS-TEST the finding — to see if it holds up under scrutiny. Think of it like cross-examination in court.
+
+Package: {package_name} ({registry})
+Version: {version}
+
+VULNERABILITY FINDING TO CHALLENGE:
+{vulnerability_json}
+
+Generate exactly 3 challenges. Each challenges a different aspect of the finding:
+
+CHALLENGE 1 — REACHABILITY CHALLENGE:
+The scanner claims user input can reach the dangerous function. Generate a challenge that tests whether this claim is true.
+- Present the actual code path the scanner identified
+- Create 4 options: one correctly identifies the real path, three present plausible reasons the path might be blocked (sanitization exists, input validation intercepts, the function is unreachable from user input, etc.)
+- The distractors should reference REAL code patterns that exist in this type of software — not obviously fake
+
+CHALLENGE 2 — EXPLOITABILITY CHALLENGE:
+The scanner claims this is exploitable in practice. Generate a challenge that tests this.
+- Present 4 deployment/configuration scenarios
+- One scenario correctly describes when exploitation is possible
+- Three scenarios describe realistic conditions that would PREVENT exploitation (different config, different platform, different permission model, the library handles it safely, etc.)
+- Be honest — if exploitation requires unusual conditions, the "correct" answer should acknowledge those constraints
+
+CHALLENGE 3 — IMPACT CHALLENGE:
+The scanner assigned a severity rating. Generate a challenge that tests whether it's accurate.
+- Present 4 impact assessments
+- One accurately describes the real impact (could be "this is overstated" if the severity was inflated)
+- Three present alternative impact levels with reasoning
+- The correct answer should be the HONEST assessment — not the scanner's claim if the scanner oversold it
+
+OUTPUT FORMAT — respond with ONLY valid JSON:
+{{
+  "puzzles": [
+    {{
+      "challenge_type": "reachability",
+      "title": "Short question — e.g. 'Can user input actually reach the exec() call?'",
+      "scenario": "The scanner identified that user input from [specific source] flows through [specific path] to reach [specific dangerous function] at [file:line]. Here is the relevant code context: [simplified code]. Examine the data flow and determine:",
+      "options": [
+        {{"text": "The path is real — input passes through X and Y without sanitization and reaches the sink", "is_correct": true}},
+        {{"text": "The path is blocked — function Z on line N validates the input before it reaches the sink", "is_correct": false}},
+        {{"text": "The path is unreachable — the function is only called internally, never from user input", "is_correct": false}},
+        {{"text": "The path exists but the framework's built-in middleware sanitizes the input first", "is_correct": false}}
+      ],
+      "explanation": "The correct answer is A because [specific reasoning with code references]. Options B, C, D are wrong because [specific reasoning].",
+      "difficulty": 3
+    }},
+    {{
+      "challenge_type": "exploitability",
+      "title": "Short question",
+      "scenario": "...",
+      "options": [...],
+      "explanation": "...",
+      "difficulty": 3
+    }},
+    {{
+      "challenge_type": "impact",
+      "title": "Short question",
+      "scenario": "...",
+      "options": [...],
+      "explanation": "...",
+      "difficulty": 3
+    }}
+  ]
+}}
+
+RULES:
+- Each puzzle MUST have exactly 4 options
+- Exactly ONE option per puzzle should have is_correct: true
+- Distractors must be PLAUSIBLE — they should reference real patterns, not be obviously wrong
+- The "correct" answer might be "the scanner was right" OR "the scanner was wrong" — be honest
+- Scenarios should include enough code context that someone who can read code can reason about it
+- Do NOT use security jargon without explaining it
+- The puzzles should be solvable by someone with general programming knowledge and critical thinking"""

@@ -97,3 +97,17 @@ export const getVulnerabilityScans = (params?: string) =>
 
 export const getPackageVulnerabilities = (packageId: string) =>
   fetchAPI<any[]>(`/api/v1/packages/${packageId}/vulnerabilities`);
+
+// Puzzles
+export const getPuzzles = (params?: string) =>
+  fetchAPI<{ items: any[]; total: number; page: number; per_page: number }>(
+    `/api/v1/puzzles${params ? `?${params}` : ""}`
+  );
+
+export const getPuzzle = (id: string) => fetchAPI<any>(`/api/v1/puzzles/${id}`);
+
+export const votePuzzle = (id: string, data: { selected_index: number; confidence: number; time_taken_secs?: number; session_id: string }) =>
+  fetchAPI<any>(`/api/v1/puzzles/${id}/vote`, { method: "POST", body: JSON.stringify(data) });
+
+export const getPuzzleResults = (id: string, sessionId: string) =>
+  fetchAPI<any>(`/api/v1/puzzles/${id}/results?session_id=${sessionId}`);

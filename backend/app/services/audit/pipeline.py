@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.package import Package
+from app.models.puzzle import Puzzle
 from app.models.vulnerability import Vulnerability
 from app.models.vulnerability_scan import VulnerabilityScan
 from app.services.audit.worker_client import AuditWorkerClient
@@ -155,12 +156,39 @@ async def process_audit_callback(
         )
         db.add(vuln)
 
+    await db.flush()
+
+    # Store puzzles — need to map vulnerability_index to actual vuln IDs
+    puzzles_data = result.get("puzzles", [])
+    if puzzles_data:
+        # Build a map from vuln index to the Vulnerability record we just created
+        # Re-query to get the IDs
+        from sqlalchemy import select as sel
+        vuln_records = (await db.execute(
+            sel(Vulnerability).where(Vulnerability.scan_id == scan.id)
+        )).scalars().all()
+
+        for p in puzzles_data:
+            vuln_idx = p.get("vulnerability_index", 0)
+            if vuln_idx < len(vuln_records):
+                puzzle = Puzzle(
+                    vulnerability_id=vuln_records[vuln_idx].id,
+                    challenge_type=p.get("challenge_type", "reachability"),
+                    title=p.get("title", "Validation Challenge"),
+                    scenario=p.get("scenario", ""),
+                    options=p.get("options", []),
+                    explanation=p.get("explanation", ""),
+                    difficulty=p.get("difficulty", 3),
+                )
+                db.add(puzzle)
+
     await db.commit()
 
     vuln_count = len([v for v in validated_vulns if v.get("validated")])
+    puzzle_count = len(puzzles_data)
     logger.info(
-        "Audit callback processed for %s@%s: %d confirmed vulnerabilities",
-        package.name, scan.version_string, vuln_count,
+        "Audit callback processed for %s@%s: %d vulnerabilities, %d puzzles",
+        package.name, scan.version_string, vuln_count, puzzle_count,
     )
 
     return scan

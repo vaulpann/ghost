@@ -21,9 +21,10 @@ from app.models import (
     AuditResult,
     AuditStatusResponse,
     DiscoveryFinding,
+    PuzzleData,
     ValidatedVulnerability,
 )
-from app.prompts import ATTACK_CHAIN_PROMPT, DISCOVERY_WRAPPER, VALIDATION_PROMPT, VULN_CATEGORIES
+from app.prompts import ATTACK_CHAIN_PROMPT, DISCOVERY_WRAPPER, PUZZLE_PROMPT, VALIDATION_PROMPT, VULN_CATEGORIES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 logger = logging.getLogger("ghost-worker")
@@ -217,6 +218,43 @@ async def _run_audit(audit_id: str, req: AuditRequest):
                         logger.info("[%s] Attack chain generated for: %s", req.package_name, finding.title[:50])
                     else:
                         logger.warning("[%s] Empty attack chain for: %s", req.package_name, finding.title[:50])
+
+            # === PUZZLE GENERATION — adversarial validation challenges ===
+            if confirmed:
+                _audits[audit_id].status = "puzzles"
+                logger.info("[%s] Generating validation puzzles for %d confirmed vulns...", req.package_name, len(confirmed))
+
+                for i, vuln in enumerate(confirmed):
+                    _audits[audit_id].progress = f"Generating puzzles {i+1}/{len(confirmed)}"
+
+                    finding = credible[vuln.original_index]
+                    full_vuln = {**finding.model_dump(), **vuln.model_dump()}
+
+                    puzzle_prompt = PUZZLE_PROMPT.format(
+                        package_name=req.package_name,
+                        registry=req.registry,
+                        version=req.version,
+                        vulnerability_json=json.dumps(full_vuln, indent=2),
+                    )
+
+                    puzzle_output = await run_codex(
+                        prompt=puzzle_prompt,
+                        working_dir=source_path,
+                        model=settings.codex_validation_model,
+                        timeout_secs=settings.codex_timeout_secs,
+                    )
+
+                    puzzle_data = parse_json_from_output(puzzle_output["stdout"])
+                    if puzzle_data and puzzle_data.get("puzzles"):
+                        for p in puzzle_data["puzzles"]:
+                            try:
+                                p["vulnerability_index"] = i
+                                result.puzzles.append(PuzzleData(**p))
+                            except Exception as e:
+                                logger.warning("Skipping malformed puzzle: %s", e)
+                        logger.info("[%s] Generated %d puzzles for: %s", req.package_name, len(puzzle_data["puzzles"]), finding.title[:50])
+                    else:
+                        logger.warning("[%s] No puzzles generated for: %s", req.package_name, finding.title[:50])
 
             result.status = "complete"
 

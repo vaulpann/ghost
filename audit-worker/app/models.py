@@ -46,12 +46,23 @@ class ValidatedVulnerability(BaseModel):
     attack_chain: str | None = None
 
 
+class PuzzleData(BaseModel):
+    challenge_type: str
+    title: str
+    scenario: str
+    options: list[dict]
+    explanation: str
+    difficulty: int = 3
+    vulnerability_index: int = 0  # which confirmed vuln this puzzle belongs to
+
+
 class AuditResult(BaseModel):
     audit_id: str
     status: str
     discovery_findings: list[DiscoveryFinding] = []
     validated_vulnerabilities: list[ValidatedVulnerability] = []
     rejected_indices: list[int] = []
+    puzzles: list[PuzzleData] = []
     discovery_model: str | None = None
     discovery_tokens_used: int | None = None
     discovery_duration_secs: float | None = None

@@ -170,6 +170,38 @@ export interface Vulnerability {
   version_string: string | null;
 }
 
+export interface PuzzleOption {
+  text: string;
+  index: number;
+  is_correct?: boolean;  // Only in results
+}
+
+export interface Puzzle {
+  id: string;
+  vulnerability_id: string;
+  challenge_type: string;
+  title: string;
+  scenario: string;
+  options: PuzzleOption[];
+  difficulty: number;
+  created_at: string;
+  vote_count: number;
+  package_name: string | null;
+  package_registry: string | null;
+  vuln_title: string | null;
+}
+
+export interface PuzzleResult {
+  id: string;
+  title: string;
+  scenario: string;
+  options: { text: string; is_correct: boolean }[];
+  explanation: string;
+  consensus: Record<number, number>;
+  total_votes: number;
+  user_was_correct: boolean;
+}
+
 export interface AlertConfig {
   id: string;
   name: string;
