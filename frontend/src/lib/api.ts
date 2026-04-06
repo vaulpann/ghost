@@ -81,3 +81,23 @@ export const deleteAlert = (id: string) =>
 export const triggerPoll = () =>
   fetchAPI<any>("/api/v1/webhooks/poll", { method: "POST" });
 
+// Sentinel
+export const getSentinelScenarios = (params?: string) =>
+  fetchAPI<{ items: any[]; total: number; page: number; per_page: number }>(
+    `/api/v1/sentinel/scenarios${params ? `?${params}` : ""}`
+  );
+
+export const getSentinelScenario = (id: string, sessionId?: string) =>
+  fetchAPI<any>(`/api/v1/sentinel/scenarios/${id}${sessionId ? `?session_id=${sessionId}` : ""}`);
+
+export const submitVerdict = (scenarioId: string, data: any) =>
+  fetchAPI<any>(`/api/v1/sentinel/scenarios/${scenarioId}/verdict`, {
+    method: "POST", body: JSON.stringify(data),
+  });
+
+export const getSentinelPlayer = (sessionId: string) =>
+  fetchAPI<any>(`/api/v1/sentinel/player/${sessionId}`);
+
+export const getSentinelStats = () =>
+  fetchAPI<any>("/api/v1/sentinel/stats");
+

@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
 
     from app.routers import (
         alerts, analyses, findings, health, packages,
-        versions, webhooks,
+        sentinel, versions, webhooks,
     )
 
     app.include_router(health.router)
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(analyses.router, prefix="/api/v1")
     app.include_router(findings.router, prefix="/api/v1")
     app.include_router(alerts.router, prefix="/api/v1")
+    app.include_router(sentinel.router, prefix="/api/v1")
     app.include_router(webhooks.router, prefix="/api/v1")
 
     return app
