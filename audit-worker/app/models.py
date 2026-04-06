@@ -47,13 +47,13 @@ class ValidatedVulnerability(BaseModel):
 
 
 class PuzzleData(BaseModel):
-    challenge_type: str
+    game_type: str
     title: str
-    scenario: str
-    options: list[dict]
-    explanation: str
+    flavor_text: str
+    level_data: dict
     difficulty: int = 3
-    vulnerability_index: int = 0  # which confirmed vuln this puzzle belongs to
+    par_time_secs: int | None = None
+    vulnerability_index: int = 0
 
 
 class AuditResult(BaseModel):

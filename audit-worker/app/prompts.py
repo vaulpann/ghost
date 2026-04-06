@@ -237,76 +237,61 @@ IMPORTANT RULES:
 - Your credibility depends on accuracy. An honest medium-severity finding is worth more than an inflated critical."""
 
 
-PUZZLE_PROMPT = """You are generating adversarial validation challenges for a vulnerability finding. These challenges are designed to STRESS-TEST the finding — to see if it holds up under scrutiny. Think of it like cross-examination in court.
+PUZZLE_PROMPT = """You are a game designer who translates real software behavior into interactive puzzle games. You are creating a game level that encodes a real code vulnerability as a playable challenge — but the player should NEVER know they're validating a vulnerability. They're just solving a fun puzzle.
 
-Package: {package_name} ({registry})
+Like Foldit turned protein folding into a spatial puzzle game, you turn code vulnerabilities into logic/spatial/timing games. The game mechanics must faithfully represent the ACTUAL code structure — every barrier, gate, path, and timing window must correspond to something real in the codebase.
+
+Package: {package_name}
 Version: {version}
 
-VULNERABILITY FINDING TO CHALLENGE:
+VULNERABILITY DATA (use this to generate the game level — but DO NOT expose any of this to the player):
 {vulnerability_json}
 
-Generate exactly 3 challenges. Each challenges a different aspect of the finding:
+YOUR TASK: Read the vulnerability data carefully. Identify the core mechanic (what makes this vulnerability work?) and translate it into a game level.
 
-CHALLENGE 1 — REACHABILITY CHALLENGE:
-The scanner claims user input can reach the dangerous function. Generate a challenge that tests whether this claim is true.
-- Present the actual code path the scanner identified
-- Create 4 options: one correctly identifies the real path, three present plausible reasons the path might be blocked (sanitization exists, input validation intercepts, the function is unreachable from user input, etc.)
-- The distractors should reference REAL code patterns that exist in this type of software — not obviously fake
+GAME TYPE MAPPING — select the game type that best matches the vulnerability:
 
-CHALLENGE 2 — EXPLOITABILITY CHALLENGE:
-The scanner claims this is exploitable in practice. Generate a challenge that tests this.
-- Present 4 deployment/configuration scenarios
-- One scenario correctly describes when exploitation is possible
-- Three scenarios describe realistic conditions that would PREVENT exploitation (different config, different platform, different permission model, the library handles it safely, etc.)
-- Be honest — if exploitation requires unusual conditions, the "correct" answer should acknowledge those constraints
+**maze** — For path traversal, directory escape, boundary bypass vulnerabilities.
+The player navigates a grid. They start in a fenced area and must reach a treasure outside. The grid walls represent real validation/sanitization in the code. Gaps in walls represent missing checks. The player types movement commands, and the maze parser has the same quirks as the real code's path parser.
+Level data: {{ "grid": [[0,0,1,...]], "start": [x,y], "goal": [x,y], "walls": [...], "parser_quirks": ["../", encoded paths, etc.] }}
 
-CHALLENGE 3 — IMPACT CHALLENGE:
-The scanner assigned a severity rating. Generate a challenge that tests whether it's accurate.
-- Present 4 impact assessments
-- One accurately describes the real impact (could be "this is overstated" if the severity was inflated)
-- Three present alternative impact levels with reasoning
-- The correct answer should be the HONEST assessment — not the scanner's claim if the scanner oversold it
+**parser** — For injection vulnerabilities (SQL, command, template, XSS).
+The player types into an input field. A split-view shows their input on the left and how a "machine" interprets it on the right. Data appears blue, instructions appear red. The player must craft input that makes red (instruction) text appear — causing the machine to do something unexpected. The parser rules match the REAL code's parsing behavior.
+Level data: {{ "input_field": "name", "parser_rules": [...], "target_action": "open vault", "sanitizers": [...], "bypass_patterns": [...] }}
+
+**timing** — For race conditions, TOCTOU vulnerabilities.
+Two parallel conveyor belts feed items to an inspector. The inspector checks an item on belt A, then uses the item on belt B. The player must swap an item during the gap between check and use. The timing window size corresponds to the REAL time gap in the code between the check and the use operations.
+Level data: {{ "check_duration_ms": N, "use_delay_ms": N, "window_ms": N, "belt_speed": N, "has_lock": false }}
+
+**routing** — For SSRF, open redirect vulnerabilities.
+A messenger NPC carries delivery slips through a building. The player writes destination addresses on slips. The messenger has a master key and can enter restricted rooms. The player must craft a slip that routes the messenger to a private room. The building layout represents the REAL network/service topology.
+Level data: {{ "rooms": [...], "restricted_rooms": [...], "validators": [...], "messenger_rules": [...] }}
+
+**gatekeeper** — For authentication bypass, broken access control.
+A nightclub scene with a bouncer. The player must get past without proper credentials. Multiple environmental approaches exist (side door, discarded wristbands, VIP list). Each approach maps to a REAL auth bypass path in the code.
+Level data: {{ "bouncer_checks": [...], "environmental_objects": [...], "bypass_paths": [...] }}
+
+**factory** — For prototype pollution, type confusion.
+A cookie cutter factory where modifying a master template changes all instances. The player must find an unlocked ancestor template in the inheritance chain and modify it to affect a target cookie. The chain represents the REAL prototype/inheritance chain.
+Level data: {{ "templates": [...], "chain": [...], "locked": [...], "target": "..." }}
+
+**blueprint** — For deserialization, unsafe eval vulnerabilities.
+The player assembles flat-pack object descriptions. A robot builds whatever is described. The player must craft a description containing hidden "magic words" that make the built object interact with the factory itself. The magic words represent REAL dangerous functions in the deserialization path.
+Level data: {{ "allowed_components": [...], "magic_components": [...], "factory_interactions": [...], "validator_whitelist": [...] }}
+
+CRITICAL RULES:
+1. Every wall, gate, barrier, timing window, and parser rule in the game MUST correspond to something REAL in the codebase. Read the vulnerability data to find the actual validation functions, sanitization steps, timing gaps, and trust boundaries.
+2. If the code has a sanitization step at a specific function, the game must have a corresponding barrier. Don't skip real defenses to make the puzzle easier.
+3. If the code's timing window is very narrow (race condition is impractical), make the game's timing window proportionally narrow — it should be hard or impossible to beat.
+4. The flavor text should be a fun narrative that frames the game WITHOUT mentioning code, hacking, security, or software. Think "you're a delivery person" or "you're a factory worker" or "you're escaping a maze."
+5. NO security terminology. No mention of vulnerabilities, exploits, CVEs, or hacking. The player is playing a game, period.
 
 OUTPUT FORMAT — respond with ONLY valid JSON:
 {{
-  "puzzles": [
-    {{
-      "challenge_type": "reachability",
-      "title": "Short question — e.g. 'Can user input actually reach the exec() call?'",
-      "scenario": "The scanner identified that user input from [specific source] flows through [specific path] to reach [specific dangerous function] at [file:line]. Here is the relevant code context: [simplified code]. Examine the data flow and determine:",
-      "options": [
-        {{"text": "The path is real — input passes through X and Y without sanitization and reaches the sink", "is_correct": true}},
-        {{"text": "The path is blocked — function Z on line N validates the input before it reaches the sink", "is_correct": false}},
-        {{"text": "The path is unreachable — the function is only called internally, never from user input", "is_correct": false}},
-        {{"text": "The path exists but the framework's built-in middleware sanitizes the input first", "is_correct": false}}
-      ],
-      "explanation": "The correct answer is A because [specific reasoning with code references]. Options B, C, D are wrong because [specific reasoning].",
-      "difficulty": 3
-    }},
-    {{
-      "challenge_type": "exploitability",
-      "title": "Short question",
-      "scenario": "...",
-      "options": [...],
-      "explanation": "...",
-      "difficulty": 3
-    }},
-    {{
-      "challenge_type": "impact",
-      "title": "Short question",
-      "scenario": "...",
-      "options": [...],
-      "explanation": "...",
-      "difficulty": 3
-    }}
-  ]
-}}
-
-RULES:
-- Each puzzle MUST have exactly 4 options
-- Exactly ONE option per puzzle should have is_correct: true
-- Distractors must be PLAUSIBLE — they should reference real patterns, not be obviously wrong
-- The "correct" answer might be "the scanner was right" OR "the scanner was wrong" — be honest
-- Scenarios should include enough code context that someone who can read code can reason about it
-- Do NOT use security jargon without explaining it
-- The puzzles should be solvable by someone with general programming knowledge and critical thinking"""
+  "game_type": "maze|parser|timing|routing|gatekeeper|factory|blueprint",
+  "title": "A fun game title — e.g. 'The Great Warehouse Escape' or 'Recipe Roulette'",
+  "flavor_text": "A 2-3 sentence narrative setup. Fun, engaging, no security jargon. Example: 'You work in a warehouse and discovered a filing room beyond the restricted area. Your badge only lets you move within your section, but the movement system has some quirks...'",
+  "level_data": {{...game-specific configuration derived from the REAL vulnerability...}},
+  "difficulty": 1-5,
+  "par_time_secs": estimated seconds for a skilled player to solve
+}}"""

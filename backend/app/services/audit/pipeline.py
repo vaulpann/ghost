@@ -173,12 +173,12 @@ async def process_audit_callback(
             if vuln_idx < len(vuln_records):
                 puzzle = Puzzle(
                     vulnerability_id=vuln_records[vuln_idx].id,
-                    challenge_type=p.get("challenge_type", "reachability"),
-                    title=p.get("title", "Validation Challenge"),
-                    scenario=p.get("scenario", ""),
-                    options=p.get("options", []),
-                    explanation=p.get("explanation", ""),
+                    game_type=p.get("game_type", "maze"),
+                    title=p.get("title", "Puzzle"),
+                    flavor_text=p.get("flavor_text", ""),
+                    level_data=p.get("level_data", {}),
                     difficulty=p.get("difficulty", 3),
+                    par_time_secs=p.get("par_time_secs"),
                 )
                 db.add(puzzle)
 

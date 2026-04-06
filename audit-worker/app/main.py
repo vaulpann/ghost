@@ -245,16 +245,15 @@ async def _run_audit(audit_id: str, req: AuditRequest):
                     )
 
                     puzzle_data = parse_json_from_output(puzzle_output["stdout"])
-                    if puzzle_data and puzzle_data.get("puzzles"):
-                        for p in puzzle_data["puzzles"]:
-                            try:
-                                p["vulnerability_index"] = i
-                                result.puzzles.append(PuzzleData(**p))
-                            except Exception as e:
-                                logger.warning("Skipping malformed puzzle: %s", e)
-                        logger.info("[%s] Generated %d puzzles for: %s", req.package_name, len(puzzle_data["puzzles"]), finding.title[:50])
+                    if puzzle_data and puzzle_data.get("game_type"):
+                        try:
+                            puzzle_data["vulnerability_index"] = i
+                            result.puzzles.append(PuzzleData(**puzzle_data))
+                            logger.info("[%s] Generated %s puzzle for: %s", req.package_name, puzzle_data["game_type"], finding.title[:50])
+                        except Exception as e:
+                            logger.warning("Skipping malformed puzzle: %s", e)
                     else:
-                        logger.warning("[%s] No puzzles generated for: %s", req.package_name, finding.title[:50])
+                        logger.warning("[%s] No puzzle generated for: %s", req.package_name, finding.title[:50])
 
             result.status = "complete"
 

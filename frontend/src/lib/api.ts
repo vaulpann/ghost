@@ -106,8 +106,8 @@ export const getPuzzles = (params?: string) =>
 
 export const getPuzzle = (id: string) => fetchAPI<any>(`/api/v1/puzzles/${id}`);
 
-export const votePuzzle = (id: string, data: { selected_index: number; confidence: number; time_taken_secs?: number; session_id: string }) =>
-  fetchAPI<any>(`/api/v1/puzzles/${id}/vote`, { method: "POST", body: JSON.stringify(data) });
-
-export const getPuzzleResults = (id: string, sessionId: string) =>
-  fetchAPI<any>(`/api/v1/puzzles/${id}/results?session_id=${sessionId}`);
+export const submitPuzzleAttempt = (id: string, data: {
+  session_id: string; solved: boolean;
+  time_taken_secs?: number; moves?: number; solution_path?: any;
+}) =>
+  fetchAPI<any>(`/api/v1/puzzles/${id}/attempt`, { method: "POST", body: JSON.stringify(data) });

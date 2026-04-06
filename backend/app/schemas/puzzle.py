@@ -4,46 +4,25 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class PuzzleOption(BaseModel):
-    text: str
-    is_correct: bool = False  # Only included in results, stripped from puzzle response
-
-
 class PuzzleResponse(BaseModel):
     id: uuid.UUID
     vulnerability_id: uuid.UUID
-    challenge_type: str
+    game_type: str
     title: str
-    scenario: str
-    options: list[dict]  # text only — no is_correct until after voting
+    flavor_text: str
+    level_data: dict
     difficulty: int
+    par_time_secs: int | None = None
     created_at: datetime
-    vote_count: int = 0
+    # Stats
+    total_attempts: int = 0
+    solve_rate: float | None = None  # 0.0-1.0
+    avg_solve_time: float | None = None
     # Enriched
     package_name: str | None = None
     package_registry: str | None = None
-    vuln_title: str | None = None
 
     model_config = {"from_attributes": True}
-
-
-class PuzzleResultResponse(BaseModel):
-    """Returned after voting — includes correct answer and consensus."""
-    id: uuid.UUID
-    title: str
-    scenario: str
-    options: list[dict]  # includes is_correct
-    explanation: str
-    consensus: dict  # {option_index: vote_count, ...}
-    total_votes: int
-    user_was_correct: bool
-
-
-class PuzzleVoteRequest(BaseModel):
-    selected_index: int
-    confidence: float
-    time_taken_secs: float | None = None
-    session_id: str
 
 
 class PuzzleListResponse(BaseModel):
@@ -53,8 +32,31 @@ class PuzzleListResponse(BaseModel):
     per_page: int
 
 
+class PuzzleAttemptRequest(BaseModel):
+    session_id: str
+    solved: bool
+    time_taken_secs: float | None = None
+    moves: int | None = None
+    solution_path: dict | None = None
+
+
+class PuzzleAttemptResponse(BaseModel):
+    id: uuid.UUID
+    puzzle_id: uuid.UUID
+    solved: bool
+    time_taken_secs: float | None
+    moves: int | None
+    created_at: datetime
+    # Puzzle stats after attempt
+    total_attempts: int
+    solve_rate: float
+    avg_solve_time: float | None
+    your_rank: int | None = None  # where you placed in solve time
+
+
 class PuzzleStatsResponse(BaseModel):
     total_puzzles: int
-    total_votes: int
-    avg_accuracy: float | None
-    consensus_rate: float | None  # % of puzzles where >60% agree
+    total_attempts: int
+    total_solves: int
+    overall_solve_rate: float | None
+    game_type_breakdown: dict  # {game_type: {puzzles: N, solve_rate: X}}
