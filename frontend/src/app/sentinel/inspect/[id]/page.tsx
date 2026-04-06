@@ -66,7 +66,7 @@ export default function InspectPage() {
 
   const handleToolClick = (tool: string) => {
     setActiveTool(activeTool === tool ? null : tool);
-    setToolsUsed(prev => new Set([...prev, tool]));
+    setToolsUsed(prev => new Set([...Array.from(prev), tool]));
   };
 
   const handleSubmit = async () => {
@@ -78,9 +78,9 @@ export default function InspectPage() {
         verdict,
         confidence,
         attack_type_guess: verdict !== "safe" ? attackGuess : null,
-        evidence_notes: { tools_checked: [...toolsUsed] },
+        evidence_notes: { tools_checked: Array.from(toolsUsed) },
         time_taken_secs: (Date.now() - startTime.current) / 1000,
-        tools_used: [...toolsUsed],
+        tools_used: Array.from(toolsUsed),
       });
       setResult(res);
     } catch (e: any) {
