@@ -93,15 +93,9 @@ async def get_scenario(
     if not scenario:
         raise HTTPException(404, "Scenario not found")
 
-    # Get player level to determine which tools they can see
-    player_level = 1
-    if session_id:
-        player = await _get_or_create_player(db, session_id)
-        player_level = player.level
+    # All 6 tools always available
+    all_tools = ["identity", "timing", "shape", "behavior", "flow", "context"]
 
-    available_tools = TOOLS_BY_LEVEL.get(player_level, TOOLS_BY_LEVEL[1])
-
-    # Build response with only the tools the player has unlocked
     data = {
         "id": str(scenario.id),
         "source": scenario.source,
@@ -110,22 +104,16 @@ async def get_scenario(
         "registry": scenario.registry,
         "version_from": scenario.version_from,
         "version_to": scenario.version_to,
-        "available_tools": available_tools,
-        "tools": {},
+        "available_tools": all_tools,
+        "tools": {
+            "identity": scenario.identity_data,
+            "timing": scenario.timing_data,
+            "shape": scenario.shape_data,
+            "behavior": scenario.behavior_data,
+            "flow": scenario.flow_data,
+            "context": scenario.context_data,
+        },
     }
-
-    if "identity" in available_tools:
-        data["tools"]["identity"] = scenario.identity_data
-    if "timing" in available_tools:
-        data["tools"]["timing"] = scenario.timing_data
-    if "shape" in available_tools:
-        data["tools"]["shape"] = scenario.shape_data
-    if "behavior" in available_tools:
-        data["tools"]["behavior"] = scenario.behavior_data
-    if "flow" in available_tools:
-        data["tools"]["flow"] = scenario.flow_data
-    if "context" in available_tools:
-        data["tools"]["context"] = scenario.context_data
 
     return data
 

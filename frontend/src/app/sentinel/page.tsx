@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getSentinelScenarios, getSentinelPlayer, getSentinelStats } from "@/lib/api";
+import { getSentinelScenarios, getSentinelPlayer } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 function getSessionId(): string {
@@ -12,144 +12,115 @@ function getSessionId(): string {
   return id;
 }
 
-const DIFFICULTY_STYLES: Record<string, { label: string; color: string }> = {
-  tutorial: { label: "Tutorial", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  easy: { label: "Easy", color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-  medium: { label: "Medium", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  hard: { label: "Hard", color: "text-orange-400 bg-orange-500/10 border-orange-500/20" },
-  expert: { label: "Expert", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+const DIFF_COLORS: Record<string, string> = {
+  tutorial: "bg-emerald-500", easy: "bg-sky-500", medium: "bg-amber-500", hard: "bg-orange-500", expert: "bg-rose-500",
 };
 
 export default function SentinelPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
-  const [total, setTotal] = useState(0);
   const [player, setPlayer] = useState<any>(null);
-  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [diffFilter, setDiffFilter] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
-        const params = new URLSearchParams();
-        if (diffFilter) params.set("difficulty", diffFilter);
-        params.set("per_page", "20");
-
-        const [scenData, playerData, statsData] = await Promise.all([
-          getSentinelScenarios(params.toString()),
+        const [scenData, playerData] = await Promise.all([
+          getSentinelScenarios("per_page=50"),
           getSentinelPlayer(getSessionId()).catch(() => null),
-          getSentinelStats().catch(() => null),
         ]);
         setScenarios(scenData.items);
-        setTotal(scenData.total);
         setPlayer(playerData);
-        setStats(statsData);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { console.error(e); }
+      finally { setLoading(false); }
     }
     load();
-  }, [diffFilter]);
+  }, []);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-muted-foreground/50">Loading...</div></div>;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto py-8 px-4 space-y-8">
       {/* Header */}
-      <div className="animate-fade-in">
-        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">
-          Supply Chain Sentinel
+      <div className="text-center space-y-3">
+        <h1 className="text-4xl font-bold tracking-tight">
+          <span className="gradient-text">Sentinel</span>
         </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
-          Inspect incoming packages. Flag the suspicious ones. Protect the supply chain.
+        <p className="text-muted-foreground/60 text-[15px] max-w-md mx-auto">
+          Inspect software packages arriving at the registry. Flag the suspicious ones. Can you spot the supply chain attack?
         </p>
       </div>
 
-      {/* Player stats bar */}
-      {player && (
-        <div className="flex items-center gap-6 rounded-2xl glass p-4 animate-fade-in animate-fade-in-delay-1">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 font-bold text-lg">
-              {player.level}
+      {/* Player card */}
+      {player && player.total_inspections > 0 && (
+        <div className="rounded-2xl bg-foreground/[0.03] border border-foreground/[0.06] p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl font-bold text-emerald-400">{player.total_score}</div>
+              <div className="text-[12px] text-muted-foreground/50 leading-tight">
+                <div className="font-medium text-foreground/60">{player.title}</div>
+                <div>{player.total_inspections} inspected</div>
+              </div>
             </div>
-            <div>
-              <p className="text-[13px] font-medium text-foreground/80">{player.title}</p>
-              <p className="text-[11px] text-muted-foreground/50">Level {player.level}</p>
+            <div className="flex gap-6 text-center text-[11px]">
+              <div>
+                <div className="text-lg font-bold text-foreground/70">{player.streak}</div>
+                <div className="text-muted-foreground/40">Streak</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-foreground/70">{player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—"}</div>
+                <div className="text-muted-foreground/40">Detection</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-foreground/70">{player.best_streak}</div>
+                <div className="text-muted-foreground/40">Best</div>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-6 text-[11px] text-muted-foreground/50">
-            <span>Score: <span className="text-foreground/70 font-mono">{player.total_score}</span></span>
-            <span>Streak: <span className="text-foreground/70 font-mono">{player.streak}</span></span>
-            <span>Detection: <span className="text-foreground/70 font-mono">{player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—"}</span></span>
-            <span>Inspected: <span className="text-foreground/70 font-mono">{player.total_inspections}</span></span>
           </div>
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-3 animate-fade-in animate-fade-in-delay-1">
-        <select
-          value={diffFilter}
-          onChange={(e) => setDiffFilter(e.target.value)}
-          className="rounded-xl glass border-0 bg-foreground/[0.03] px-4 py-2.5 text-[13px] text-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring/20 appearance-none cursor-pointer"
-        >
-          <option value="">All difficulties</option>
-          <option value="tutorial">Tutorial</option>
-          <option value="easy">Easy</option>
-          <option value="medium">Medium</option>
-          <option value="hard">Hard</option>
-          <option value="expert">Expert</option>
-        </select>
-        {stats && (
-          <div className="ml-auto flex gap-4 text-[11px] text-muted-foreground/40">
-            <span>{stats.total_scenarios} scenarios</span>
-            <span>{stats.total_inspections} inspections</span>
-            <span>{stats.total_players} inspectors</span>
-          </div>
-        )}
+      {/* Scenario list */}
+      <div className="space-y-2">
+        {scenarios.map((s) => (
+          <Link
+            key={s.id}
+            href={`/sentinel/inspect/${s.id}`}
+            className="group flex items-center gap-4 rounded-xl bg-foreground/[0.02] border border-foreground/[0.05] hover:border-foreground/[0.12] hover:bg-foreground/[0.04] p-4 transition-all"
+          >
+            <div className={cn("h-3 w-3 rounded-full shrink-0", DIFF_COLORS[s.difficulty] || "bg-foreground/20")} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-medium text-foreground/80 group-hover:text-foreground transition-colors">{s.package_name}</span>
+                <span className="text-[11px] text-muted-foreground/40 font-mono">{s.registry}</span>
+              </div>
+              <p className="text-[12px] text-muted-foreground/40 font-mono mt-0.5">{s.version_from || "?"} &rarr; {s.version_to || "?"}</p>
+            </div>
+            <div className="text-right shrink-0">
+              {s.total_inspections > 0 ? (
+                <span className="text-[11px] text-muted-foreground/40">{s.total_inspections} inspected</span>
+              ) : (
+                <span className="text-[11px] text-emerald-400/60 font-medium">New</span>
+              )}
+            </div>
+            <svg className="w-4 h-4 text-muted-foreground/20 group-hover:text-foreground/40 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        ))}
       </div>
 
-      {/* Scenario Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 animate-fade-in animate-fade-in-delay-2">
-        {scenarios.map((s, i) => {
-          const ds = DIFFICULTY_STYLES[s.difficulty] || DIFFICULTY_STYLES.easy;
-          return (
-            <Link
-              key={s.id}
-              href={`/sentinel/inspect/${s.id}`}
-              className="group rounded-xl glass glass-hover p-5 animate-fade-in"
-              style={{ animationDelay: `${i * 0.03}s` }}
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span className={cn("text-[10px] font-medium uppercase tracking-wider px-2 py-0.5 rounded-full border", ds.color)}>
-                  {ds.label}
-                </span>
-                <span className="text-[10px] text-muted-foreground/40 font-mono">{s.registry}</span>
-              </div>
-
-              <h3 className="text-[15px] font-medium text-foreground/80 group-hover:text-foreground transition-colors mb-1">
-                {s.package_name}
-              </h3>
-              <p className="text-[12px] text-muted-foreground/50 font-mono">
-                {s.version_from || "?"} &rarr; {s.version_to || "?"}
-              </p>
-
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-foreground/[0.04] text-[11px] text-muted-foreground/40">
-                <span>{s.total_inspections} inspection{s.total_inspections !== 1 ? "s" : ""}</span>
-                {s.correct_rate !== null && (
-                  <span className="font-mono">{(s.correct_rate * 100).toFixed(0)}% accuracy</span>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
-
-      {scenarios.length === 0 && !loading && (
-        <div className="rounded-2xl glass p-12 text-center text-muted-foreground/50 text-sm">
-          No scenarios available yet.
-        </div>
+      {scenarios.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground/40 text-sm">No scenarios available.</div>
       )}
+
+      <div className="flex justify-center gap-4 text-[10px] text-muted-foreground/30">
+        {Object.entries(DIFF_COLORS).map(([d, c]) => (
+          <div key={d} className="flex items-center gap-1">
+            <div className={cn("h-2 w-2 rounded-full", c)} />
+            <span className="capitalize">{d}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
