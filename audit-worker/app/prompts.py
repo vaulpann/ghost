@@ -149,15 +149,28 @@ Output as JSON:
   "validated": true or false,
   "confidence": 0.0 to 1.0,
   "reasoning": "Detailed explanation with specific code references",
-  "severity_adjusted": "critical/high/medium/low",
+  "severity_adjusted": "critical/high/medium/low/informational",
+  "exploitability_constraints": "What does an attacker need? Local access? Auth? Config changes? Be honest.",
   "poc_code": "Working proof-of-concept code or script (null if false positive)",
   "poc_description": "How to run the PoC and what it demonstrates",
-  "cvss_score": 9.8,
+  "cvss_score": 7.5,
   "remediation": "Specific fix with code example"
-}}"""
+}}
+
+SEVERITY CALIBRATION — be honest, not alarmist:
+- critical (9.0+): Unauthenticated remote exploitation. No prerequisites beyond network access. Immediate real-world impact.
+- high (7.0-8.9): Exploitable but requires some prerequisites (authenticated access, specific config, victim action).
+- medium (4.0-6.9): Real code-level finding but narrow threat model. Requires pre-existing local access, unusual permissions, or winning a tight race.
+- low (1.0-3.9): Defense-in-depth gap. The pattern is wrong but exploitation requires conditions that already give the attacker most of what they'd gain.
+- informational: Code quality concern or hardcoded secrets in non-production files.
+
+A TOCTOU requiring write access to a protected directory = medium at most, not high.
+Unauthenticated API with no auth at all = critical.
+Command injection via CLI flag that only the user themselves can set = low.
+SSRF from user-controlled input over the network = high/critical."""
 
 
-ATTACK_CHAIN_PROMPT = """You are a red team operator building a realistic attack chain for a confirmed vulnerability. Your job is NOT to just describe the vulnerability — it's to show how an adversary would ACTUALLY exploit it in the real world, step by step.
+ATTACK_CHAIN_PROMPT = """You are a security researcher writing a defensive threat analysis for a confirmed vulnerability. This analysis helps security teams understand the REAL risk so they can prioritize remediation correctly. This is authorized defensive security research for an open-source vulnerability disclosure.
 
 Package: {package_name} ({registry})
 Version: {version}
@@ -165,55 +178,60 @@ Version: {version}
 CONFIRMED VULNERABILITY:
 {vulnerability_json}
 
-YOUR TASK:
+Write a threat model and realistic exploitation scenario analysis for this vulnerability. This is for a defensive security report — security teams need to understand exactly how this could be exploited in practice to decide how urgently to fix it.
 
-First, understand how this software is ACTUALLY USED in practice:
-- Who uses it? (developers, sysadmins, end users, automated systems?)
-- How is it deployed? (local CLI, web server, cloud service, library imported by other code?)
-- What does a typical user's environment look like?
-- What privileges does the software typically run with?
-- What sensitive data or systems does it have access to?
+YOUR ANALYSIS MUST BE HONEST ABOUT EXPLOITABILITY. Structure it as follows:
 
-Then build a COMPLETE attack chain — a realistic scenario from initial access to full impact. Structure it as:
+## Threat Model
 
-## Victim Profile
-Who is the victim? What are they doing? What does their setup look like?
+### Who Uses This Software
+Describe the typical users, deployment model, and environment. What privileges does it run with? What sensitive data does it touch?
 
-## Initial Access
-How does the attacker get their payload to the victim? This must be REALISTIC:
-- If it's a web framework: malicious HTTP request from the internet
-- If it's a CLI tool: poisoned config file, malicious repository, prompt injection
-- If it's a library: malicious input from an upstream source the developer trusts
-- If it's an AI tool: prompt injection via poisoned files, malicious plugins/skills
-- NOT "the attacker has physical access" or "the attacker modifies the source code"
+### Prerequisites for Exploitation
+Be BRUTALLY HONEST here. What does an attacker need before they can exploit this?
+- Do they need network access? Local access? Authenticated access?
+- Do they need the victim to take a specific action?
+- Are there configuration requirements?
+- What's the realistic attack surface — is this internet-facing, or does it require a contrived setup?
 
-## Exploitation Steps
-Step-by-step, what does the attacker do? Each step should include:
-- What the attacker does
-- What the victim sees (usually nothing suspicious)
-- What's actually happening under the hood
-- Why existing security controls don't catch it
+### Realistic Exploitation Scenario
+Describe the most realistic scenario where this vulnerability gets exploited in the wild. Not the worst case, not the best case — the MOST LIKELY case.
+- How does the attacker realistically reach this code path?
+- What does the victim's normal workflow look like during the attack?
+- What would the victim see vs. what's actually happening?
 
-## Persistence & Lateral Movement
-After initial exploitation, how does the attacker maintain access?
-- What can they write/modify to persist?
-- Can they move to other systems from here?
-- What credentials or tokens can they steal?
+### Exploitation Constraints & Limitations
+What makes this HARDER to exploit than it looks on paper?
+- Are there mitigations already in place that reduce impact?
+- Does timing, configuration, or platform matter?
+- Has the project team already addressed similar issues elsewhere?
+- Is the threat model for this issue narrow or broad?
 
-## Impact — What the Attacker Achieves
-Be SPECIFIC about the real-world damage:
-- Data theft (what specific data?)
-- System compromise (what level of access?)
-- Supply chain impact (can they poison downstream users?)
-- Financial/reputational damage
+### Impact If Successfully Exploited
+If an attacker overcomes the constraints above, what specifically can they achieve?
+- Be specific: what data, what access, what persistence
+- Don't oversell: "complete system compromise" is only accurate if it's actually achievable without additional barriers
 
-## End-to-End Kill Chain Summary
-A numbered list of the complete attack from start to finish, like a MITRE ATT&CK-style kill chain.
+### Severity Assessment
+Based on the realistic exploitation scenario (not theoretical worst case):
+- What CVSS score accurately reflects the REAL risk? (not the theoretical maximum)
+- Is this a standalone high-severity vuln, or a defense-in-depth gap?
+- Should a security team drop everything to fix this, or schedule it for the next sprint?
 
-## Why This Matters
-One paragraph on why a security team should care about this specific vulnerability in this specific software.
+### Recommended Prioritization
+One paragraph: fix immediately, schedule for next release, or monitor? Why?
 
-OUTPUT FORMAT:
-Write the attack chain as detailed Markdown. Be vivid and specific — name real files, real paths, real commands. This should read like an incident report from a real breach, not a generic vulnerability description. Security teams should read this and immediately understand the threat.
+## Kill Chain (if exploitable from outside the trust boundary)
+If and ONLY if this vulnerability is exploitable by someone WITHOUT pre-existing access:
+1. Initial access vector
+2. Each exploitation step
+3. What the attacker achieves
 
-Do NOT be generic. Do NOT say "an attacker could potentially..." — say "the attacker sends a POST request to /api/chat with the payload..." Be specific to THIS software, THIS vulnerability, THIS attack path."""
+If exploitation requires pre-existing local access or other vulns, say so clearly and skip the kill chain.
+
+IMPORTANT RULES:
+- Do NOT oversell severity. A finding that requires local access to a config directory is NOT the same as an unauthenticated RCE from the internet.
+- A TOCTOU that requires write access to a protected directory is a defense-in-depth gap, not a critical vulnerability.
+- Hardcoded secrets in example/tutorial files are informational, not critical.
+- Be specific to THIS software — reference actual file paths, actual code, actual deployment patterns.
+- Your credibility depends on accuracy. An honest medium-severity finding is worth more than an inflated critical."""
