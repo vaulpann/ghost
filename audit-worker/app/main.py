@@ -23,7 +23,7 @@ from app.models import (
     DiscoveryFinding,
     ValidatedVulnerability,
 )
-from app.prompts import DISCOVERY_WRAPPER, VALIDATION_PROMPT, VULN_CATEGORIES
+from app.prompts import ATTACK_CHAIN_PROMPT, DISCOVERY_WRAPPER, VALIDATION_PROMPT, VULN_CATEGORIES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 logger = logging.getLogger("ghost-worker")
@@ -182,6 +182,41 @@ async def _run_audit(audit_id: str, req: AuditRequest):
                 "[%s] Validation complete: %d confirmed, %d rejected in %.0fs",
                 req.package_name, len(result.validated_vulnerabilities), len(result.rejected_indices), total_validation_secs,
             )
+
+            # === ATTACK CHAIN GENERATION — one per confirmed vuln ===
+            confirmed = [v for v in result.validated_vulnerabilities if v.validated]
+            if confirmed:
+                _audits[audit_id].status = "attack_chain"
+                logger.info("[%s] Generating attack chains for %d confirmed vulns...", req.package_name, len(confirmed))
+
+                for i, vuln in enumerate(confirmed):
+                    _audits[audit_id].progress = f"Building attack chain {i+1}/{len(confirmed)}"
+
+                    # Merge discovery finding + validation data for context
+                    finding = credible[vuln.original_index]
+                    full_vuln = {**finding.model_dump(), **vuln.model_dump()}
+
+                    chain_prompt = ATTACK_CHAIN_PROMPT.format(
+                        package_name=req.package_name,
+                        registry=req.registry,
+                        version=req.version,
+                        vulnerability_json=json.dumps(full_vuln, indent=2),
+                    )
+
+                    chain_output = await run_codex(
+                        prompt=chain_prompt,
+                        working_dir=source_path,
+                        model=settings.codex_validation_model,
+                        timeout_secs=settings.codex_timeout_secs,
+                    )
+
+                    # Attack chain is free-form markdown, not JSON
+                    chain_text = chain_output["stdout"].strip()
+                    if chain_text:
+                        vuln.attack_chain = chain_text
+                        logger.info("[%s] Attack chain generated for: %s", req.package_name, finding.title[:50])
+                    else:
+                        logger.warning("[%s] Empty attack chain for: %s", req.package_name, finding.title[:50])
 
             result.status = "complete"
 

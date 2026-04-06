@@ -151,6 +151,7 @@ async def process_audit_callback(
             confidence=v.get("confidence", 0.5),
             validated=True,
             remediation=v.get("remediation"),
+            attack_chain=v.get("attack_chain"),
         )
         db.add(vuln)
 

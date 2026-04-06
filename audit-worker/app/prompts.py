@@ -155,3 +155,65 @@ Output as JSON:
   "cvss_score": 9.8,
   "remediation": "Specific fix with code example"
 }}"""
+
+
+ATTACK_CHAIN_PROMPT = """You are a red team operator building a realistic attack chain for a confirmed vulnerability. Your job is NOT to just describe the vulnerability — it's to show how an adversary would ACTUALLY exploit it in the real world, step by step.
+
+Package: {package_name} ({registry})
+Version: {version}
+
+CONFIRMED VULNERABILITY:
+{vulnerability_json}
+
+YOUR TASK:
+
+First, understand how this software is ACTUALLY USED in practice:
+- Who uses it? (developers, sysadmins, end users, automated systems?)
+- How is it deployed? (local CLI, web server, cloud service, library imported by other code?)
+- What does a typical user's environment look like?
+- What privileges does the software typically run with?
+- What sensitive data or systems does it have access to?
+
+Then build a COMPLETE attack chain — a realistic scenario from initial access to full impact. Structure it as:
+
+## Victim Profile
+Who is the victim? What are they doing? What does their setup look like?
+
+## Initial Access
+How does the attacker get their payload to the victim? This must be REALISTIC:
+- If it's a web framework: malicious HTTP request from the internet
+- If it's a CLI tool: poisoned config file, malicious repository, prompt injection
+- If it's a library: malicious input from an upstream source the developer trusts
+- If it's an AI tool: prompt injection via poisoned files, malicious plugins/skills
+- NOT "the attacker has physical access" or "the attacker modifies the source code"
+
+## Exploitation Steps
+Step-by-step, what does the attacker do? Each step should include:
+- What the attacker does
+- What the victim sees (usually nothing suspicious)
+- What's actually happening under the hood
+- Why existing security controls don't catch it
+
+## Persistence & Lateral Movement
+After initial exploitation, how does the attacker maintain access?
+- What can they write/modify to persist?
+- Can they move to other systems from here?
+- What credentials or tokens can they steal?
+
+## Impact — What the Attacker Achieves
+Be SPECIFIC about the real-world damage:
+- Data theft (what specific data?)
+- System compromise (what level of access?)
+- Supply chain impact (can they poison downstream users?)
+- Financial/reputational damage
+
+## End-to-End Kill Chain Summary
+A numbered list of the complete attack from start to finish, like a MITRE ATT&CK-style kill chain.
+
+## Why This Matters
+One paragraph on why a security team should care about this specific vulnerability in this specific software.
+
+OUTPUT FORMAT:
+Write the attack chain as detailed Markdown. Be vivid and specific — name real files, real paths, real commands. This should read like an incident report from a real breach, not a generic vulnerability description. Security teams should read this and immediately understand the threat.
+
+Do NOT be generic. Do NOT say "an attacker could potentially..." — say "the attacker sends a POST request to /api/chat with the payload..." Be specific to THIS software, THIS vulnerability, THIS attack path."""

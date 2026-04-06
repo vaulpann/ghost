@@ -43,6 +43,7 @@ class ValidatedVulnerability(BaseModel):
     poc_description: str | None = None
     cvss_score: float | None = None
     remediation: str | None = None
+    attack_chain: str | None = None
 
 
 class AuditResult(BaseModel):

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { getVulnerability } from "@/lib/api";
 import type { Vulnerability } from "@/lib/types";
+import Markdown from "react-markdown";
 import { RiskBadge } from "@/components/analysis/risk-badge";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 import { cn } from "@/lib/utils";
@@ -13,7 +14,7 @@ export default function VulnerabilityDetailPage() {
   const params = useParams();
   const [vuln, setVuln] = useState<Vulnerability | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"details" | "poc" | "code" | "scan">("details");
+  const [activeTab, setActiveTab] = useState<"attack_chain" | "details" | "poc" | "code" | "scan">("attack_chain");
 
   useEffect(() => {
     async function load() {
@@ -80,7 +81,7 @@ export default function VulnerabilityDetailPage() {
       {/* Tabs */}
       <div className="animate-fade-in animate-fade-in-delay-1">
         <div className="flex gap-1 p-1 rounded-xl bg-foreground/[0.03] w-fit overflow-x-auto">
-          {(["details", "poc", "code", "scan"] as const).map((tab) => (
+          {(["attack_chain", "details", "poc", "code", "scan"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -91,7 +92,7 @@ export default function VulnerabilityDetailPage() {
                   : "text-muted-foreground/70 hover:text-foreground/50"
               )}
             >
-              {tab === "poc" ? "PoC" : tab}
+              {tab === "poc" ? "PoC" : tab === "attack_chain" ? "Attack Chain" : tab}
             </button>
           ))}
         </div>
@@ -99,6 +100,54 @@ export default function VulnerabilityDetailPage() {
 
       {/* Content */}
       <div className="animate-fade-in animate-fade-in-delay-2">
+        {activeTab === "attack_chain" && (
+          <div className="space-y-4">
+            {vuln.attack_chain ? (
+              <div className="rounded-2xl glass p-8 prose-ghost">
+                <Markdown
+                  components={{
+                    h1: ({ children }) => <h1 className="text-xl font-semibold text-foreground/90 mb-4 mt-0">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-lg font-semibold text-foreground/85 mb-3 mt-8 first:mt-0 pb-2 border-b border-border">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-[15px] font-medium text-foreground/75 mb-2 mt-6">{children}</h3>,
+                    p: ({ children }) => <p className="text-[13px] text-foreground/50 leading-relaxed mb-4">{children}</p>,
+                    ul: ({ children }) => <ul className="space-y-2 mb-4 ml-1">{children}</ul>,
+                    ol: ({ children }) => <ol className="space-y-2 mb-4 ml-1 list-decimal list-inside">{children}</ol>,
+                    li: ({ children }) => (
+                      <li className="text-[13px] text-foreground/50 leading-relaxed flex gap-2">
+                        <span className="text-red-400/40 mt-1.5 shrink-0">&#8226;</span>
+                        <span>{children}</span>
+                      </li>
+                    ),
+                    strong: ({ children }) => <strong className="text-foreground/70 font-medium">{children}</strong>,
+                    em: ({ children }) => <em className="text-foreground/60 italic">{children}</em>,
+                    code: ({ children }) => (
+                      <code className="text-[12px] font-mono bg-foreground/[0.04] text-red-400/70 px-1.5 py-0.5 rounded-md border border-foreground/[0.04]">
+                        {children}
+                      </code>
+                    ),
+                    pre: ({ children }) => (
+                      <pre className="bg-foreground/[0.02] border border-foreground/[0.04] rounded-lg p-4 overflow-x-auto mb-4 text-[12px]">
+                        {children}
+                      </pre>
+                    ),
+                    blockquote: ({ children }) => (
+                      <blockquote className="border-l-2 border-red-500/30 pl-4 my-4 text-foreground/40 italic">
+                        {children}
+                      </blockquote>
+                    ),
+                  }}
+                >
+                  {vuln.attack_chain}
+                </Markdown>
+              </div>
+            ) : (
+              <div className="rounded-2xl glass p-12 text-center text-muted-foreground/50 text-sm">
+                No attack chain analysis available yet. Run a fresh scan to generate one.
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === "details" && (
           <div className="space-y-4">
             <div className="rounded-2xl glass p-6">

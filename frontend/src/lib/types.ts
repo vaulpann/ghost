@@ -159,6 +159,7 @@ export interface Vulnerability {
   impact: string | null;
   cvss_score: number | null;
   cwe_id: string | null;
+  attack_chain: string | null;
   confidence: number;
   validated: boolean;
   false_positive: boolean;
