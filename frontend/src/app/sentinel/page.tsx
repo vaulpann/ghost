@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSentinelScenarios, getSentinelPlayer } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
@@ -11,10 +10,6 @@ function getSessionId(): string {
   if (!id) { id = crypto.randomUUID(); localStorage.setItem("ghost-session-id", id); }
   return id;
 }
-
-const DIFF_COLORS: Record<string, string> = {
-  tutorial: "bg-emerald-500", easy: "bg-sky-500", medium: "bg-amber-500", hard: "bg-orange-500", expert: "bg-rose-500",
-};
 
 export default function SentinelPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
@@ -36,90 +31,86 @@ export default function SentinelPage() {
     load();
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-muted-foreground/50">Loading...</div></div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: "#fff" }}><p style={{ color: "#999" }}>Loading...</p></div>;
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4 space-y-8">
+    <div style={{ maxWidth: 520, margin: "0 auto", padding: "40px 20px", fontFamily: "'nyt-karnakcondensed', Georgia, serif" }}>
       {/* Header */}
-      <div className="text-center space-y-3">
-        <h1 className="text-4xl font-bold tracking-tight">
-          <span className="gradient-text">Sentinel</span>
+      <div style={{ textAlign: "center", marginBottom: 32, borderBottom: "1px solid #e0e0e0", paddingBottom: 20 }}>
+        <h1 style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1, margin: 0, fontFamily: "'nyt-karnakcondensed', Georgia, serif" }}>
+          Sentinel
         </h1>
-        <p className="text-muted-foreground/60 text-[15px] max-w-md mx-auto">
-          Inspect software packages arriving at the registry. Flag the suspicious ones. Can you spot the supply chain attack?
+        <p style={{ fontSize: 14, color: "#787878", marginTop: 8, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
+          Inspect software packages. Find the threat.
         </p>
       </div>
 
-      {/* Player card */}
+      {/* Stats bar */}
       {player && player.total_inspections > 0 && (
-        <div className="rounded-2xl bg-foreground/[0.03] border border-foreground/[0.06] p-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="text-2xl font-bold text-emerald-400">{player.total_score}</div>
-              <div className="text-[12px] text-muted-foreground/50 leading-tight">
-                <div className="font-medium text-foreground/60">{player.title}</div>
-                <div>{player.total_inspections} inspected</div>
-              </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 32, marginBottom: 28, padding: "12px 0", borderBottom: "1px solid #e0e0e0" }}>
+          {[
+            { label: "Score", value: player.total_score },
+            { label: "Streak", value: player.streak },
+            { label: "Detection", value: player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—" },
+          ].map((s) => (
+            <div key={s.label} style={{ textAlign: "center", fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1a2e" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</div>
             </div>
-            <div className="flex gap-6 text-center text-[11px]">
-              <div>
-                <div className="text-lg font-bold text-foreground/70">{player.streak}</div>
-                <div className="text-muted-foreground/40">Streak</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold text-foreground/70">{player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—"}</div>
-                <div className="text-muted-foreground/40">Detection</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold text-foreground/70">{player.best_streak}</div>
-                <div className="text-muted-foreground/40">Best</div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* Scenario list */}
-      <div className="space-y-2">
+      {/* Scenarios */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
         {scenarios.map((s) => (
           <Link
             key={s.id}
             href={`/sentinel/inspect/${s.id}`}
-            className="group flex items-center gap-4 rounded-xl bg-foreground/[0.02] border border-foreground/[0.05] hover:border-foreground/[0.12] hover:bg-foreground/[0.04] p-4 transition-all"
+            style={{
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "16px 12px",
+              borderBottom: "1px solid #f0f0f0",
+              textDecoration: "none", color: "inherit",
+              fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+            }}
           >
-            <div className={cn("h-3 w-3 rounded-full shrink-0", DIFF_COLORS[s.difficulty] || "bg-foreground/20")} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[14px] font-medium text-foreground/80 group-hover:text-foreground transition-colors">{s.package_name}</span>
-                <span className="text-[11px] text-muted-foreground/40 font-mono">{s.registry}</span>
+            <div style={{
+              width: 36, height: 36, borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, fontWeight: 700,
+              background: s.difficulty === "tutorial" ? "#e8f5e9" : s.difficulty === "easy" ? "#e3f2fd" : s.difficulty === "medium" ? "#fff8e1" : s.difficulty === "hard" ? "#fff3e0" : "#fce4ec",
+              color: s.difficulty === "tutorial" ? "#2e7d32" : s.difficulty === "easy" ? "#1565c0" : s.difficulty === "medium" ? "#f57f17" : s.difficulty === "hard" ? "#e65100" : "#c62828",
+            }}>
+              {s.difficulty[0].toUpperCase()}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a2e" }}>
+                {s.package_name}
+                <span style={{ fontSize: 12, fontWeight: 400, color: "#aaa", marginLeft: 6 }}>{s.registry}</span>
               </div>
-              <p className="text-[12px] text-muted-foreground/40 font-mono mt-0.5">{s.version_from || "?"} &rarr; {s.version_to || "?"}</p>
+              <div style={{ fontSize: 13, color: "#888", fontFamily: "monospace", marginTop: 2 }}>
+                {s.version_from || "?"} → {s.version_to || "?"}
+              </div>
             </div>
-            <div className="text-right shrink-0">
-              {s.total_inspections > 0 ? (
-                <span className="text-[11px] text-muted-foreground/40">{s.total_inspections} inspected</span>
-              ) : (
-                <span className="text-[11px] text-emerald-400/60 font-medium">New</span>
-              )}
+            <div style={{ fontSize: 12, color: "#bbb" }}>
+              {s.total_inspections > 0 ? `${s.total_inspections} played` : "New"}
             </div>
-            <svg className="w-4 h-4 text-muted-foreground/20 group-hover:text-foreground/40 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            <svg width="8" height="14" viewBox="0 0 8 14" fill="none" style={{ opacity: 0.3 }}>
+              <path d="M1 1l6 6-6 6" stroke="#1a1a2e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </Link>
         ))}
       </div>
 
       {scenarios.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground/40 text-sm">No scenarios available.</div>
+        <p style={{ textAlign: "center", padding: 40, color: "#bbb" }}>No scenarios available.</p>
       )}
 
-      <div className="flex justify-center gap-4 text-[10px] text-muted-foreground/30">
-        {Object.entries(DIFF_COLORS).map(([d, c]) => (
-          <div key={d} className="flex items-center gap-1">
-            <div className={cn("h-2 w-2 rounded-full", c)} />
-            <span className="capitalize">{d}</span>
-          </div>
-        ))}
+      <div style={{ textAlign: "center", marginTop: 40, paddingTop: 20, borderTop: "1px solid #e0e0e0" }}>
+        <p style={{ fontSize: 11, color: "#bbb", fontFamily: "-apple-system, sans-serif" }}>
+          Powered by <a href="https://ghost.validia.ai" style={{ color: "#999" }}>Ghost</a> · Validia
+        </p>
       </div>
     </div>
   );
