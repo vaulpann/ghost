@@ -129,16 +129,6 @@ async def submit_verdict(
     if not scenario:
         raise HTTPException(404, "Scenario not found")
 
-    # Check if already submitted
-    existing = await db.execute(
-        select(SentinelVerdict).where(
-            SentinelVerdict.scenario_id == scenario_id,
-            SentinelVerdict.session_id == req.session_id,
-        )
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(409, "Already submitted a verdict for this scenario")
-
     # Score the verdict
     is_correct = False
     score = 0

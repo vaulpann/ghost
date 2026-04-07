@@ -188,7 +188,7 @@ export default function InspectPage() {
         localStorage.setItem("ghost-completed", JSON.stringify(completed));
       } catch {}
     } catch (e: any) {
-      if (e.message?.includes("409")) alert("Already inspected.");
+      console.error("Submit failed:", e);
     } finally { setSubmitting(false); }
   };
 
