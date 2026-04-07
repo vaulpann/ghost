@@ -134,6 +134,109 @@ const NARRATIVES: Record<string, (d: any) => string> = {
   },
 };
 
+const ADVANCED_CONTEXT: Record<string, (d: any) => { label: string; content: string }[]> = {
+  identity: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    if (d.all_maintainers?.length) sections.push({ label: "Full Maintainer List", content: d.all_maintainers.join(", ") });
+    if (d.email) sections.push({ label: "Publisher Email", content: d.email });
+    if (d.npm_2fa_enabled !== undefined) sections.push({ label: "2FA Status", content: d.npm_2fa_enabled ? "Enabled" : "Not enabled" });
+    if (d.github_profile) sections.push({ label: "GitHub Profile", content: JSON.stringify(d.github_profile, null, 2) });
+    if (d.ownership_history?.length) sections.push({ label: "Ownership Changes", content: d.ownership_history.map((h: any) => `${h.date}: ${h.from} → ${h.to}`).join("\n") });
+    return sections;
+  },
+  timing: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    const h = d.release_history || [];
+    if (h.length > 0) {
+      const table = h.map((r: any) => `${r.version}  ${r.date}${r.gap_days != null ? `  (+${r.gap_days}d)` : ""}`).join("\n");
+      sections.push({ label: "Full Version History", content: table });
+    }
+    if (d.publish_hour !== undefined) sections.push({ label: "Publish Time (UTC)", content: `Published at hour ${d.publish_hour} UTC` });
+    if (d.day_of_week) sections.push({ label: "Day of Week", content: d.day_of_week });
+    return sections;
+  },
+  shape: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    const fa = d.files_added || [];
+    const fr = d.files_removed || [];
+    const fm = d.files_modified || [];
+    if (fa.length) sections.push({ label: "Files Added", content: fa.join("\n") });
+    if (fr.length) sections.push({ label: "Files Removed", content: fr.join("\n") });
+    if (fm.length) sections.push({ label: "Files Modified", content: fm.join("\n") });
+    if (d.deps_added?.length) sections.push({ label: "Dependencies Added", content: d.deps_added.join("\n") });
+    if (d.deps_removed?.length) sections.push({ label: "Dependencies Removed", content: d.deps_removed.join("\n") });
+    if (d.diff_sample) sections.push({ label: "Code Diff Sample", content: d.diff_sample });
+    if (d.size_before && d.size_after) sections.push({ label: "Package Size", content: `${d.size_before} → ${d.size_after} bytes` });
+    return sections;
+  },
+  behavior: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    if (d.install_scripts && Object.keys(d.install_scripts).length) {
+      sections.push({ label: "Install Scripts", content: Object.entries(d.install_scripts).map(([k, v]) => `${k}: ${v}`).join("\n") });
+    }
+    if (d.suspicious_patterns?.length) sections.push({ label: "Suspicious Code Patterns", content: d.suspicious_patterns.map((p: any) => `${p.file}:${p.line} — ${p.pattern}\n${p.snippet || ""}`).join("\n\n") });
+    if (d.obfuscation_signals?.length) sections.push({ label: "Obfuscation Signals", content: d.obfuscation_signals.join("\n") });
+    const cats = d.categories || {};
+    if (Object.keys(cats).length) sections.push({ label: "Category Breakdown", content: Object.entries(cats).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join("\n") });
+    return sections;
+  },
+  flow: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    const conn = d.outbound_connections || [];
+    if (conn.length) sections.push({ label: "Outbound Connections", content: conn.map((c: any) => `${c.type}: ${c.domain}${c.url ? ` (${c.url})` : ""}${c.file ? ` — in ${c.file}` : ""}`).join("\n") });
+    if (d.data_reads?.length) sections.push({ label: "Data Access", content: d.data_reads.join("\n") });
+    if (d.env_access?.length) sections.push({ label: "Environment Variables Read", content: d.env_access.join("\n") });
+    if (d.crypto_usage?.length) sections.push({ label: "Crypto/Encoding Usage", content: d.crypto_usage.join("\n") });
+    return sections;
+  },
+  context: (d) => {
+    const sections: { label: string; content: string }[] = [];
+    if (d.description) sections.push({ label: "Package Description", content: d.description });
+    if (d.update_summary) sections.push({ label: "Update Summary", content: d.update_summary });
+    if (d.readme_snippet) sections.push({ label: "README Excerpt", content: d.readme_snippet });
+    if (d.license) sections.push({ label: "License", content: d.license });
+    if (d.repository_url) sections.push({ label: "Repository", content: d.repository_url });
+    if (d.weekly_downloads) sections.push({ label: "Weekly Downloads", content: d.weekly_downloads.toLocaleString() });
+    if (d.dependents_count) sections.push({ label: "Dependent Packages", content: d.dependents_count.toLocaleString() });
+    return sections;
+  },
+};
+
+function AdvancedDetails({ evidenceKey, data }: { evidenceKey: string; data: any }) {
+  const sections = ADVANCED_CONTEXT[evidenceKey]?.(data) || [];
+  if (sections.length === 0) return null;
+
+  return (
+    <details style={{ marginTop: 20, fontSize: 12 }}>
+      <summary style={{
+        cursor: "pointer", userSelect: "none",
+        display: "inline-flex", alignItems: "center", gap: 6,
+        color: "#1e3a5f", fontWeight: 600, fontSize: 12,
+      }}>
+        <span style={{
+          fontSize: 9, padding: "2px 6px", borderRadius: 4,
+          background: "#1e3a5f", color: "#fff", fontWeight: 700,
+          letterSpacing: 0.5, textTransform: "uppercase",
+        }}>Advanced</span>
+        Detailed context
+      </summary>
+      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+        {sections.map((s, i) => (
+          <div key={i}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "#999", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{s.label}</p>
+            <pre style={{
+              fontSize: 12, color: "#444", fontFamily: "monospace",
+              background: "#f8f8f8", padding: 10, borderRadius: 8,
+              overflowX: "auto", whiteSpace: "pre-wrap", margin: 0,
+              border: "1px solid #f0f0f0", lineHeight: 1.6,
+            }}>{s.content}</pre>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export default function InspectPage() {
   const params = useParams();
   const [scenario, setScenario] = useState<any>(null);
@@ -440,7 +543,9 @@ export default function InspectPage() {
                 {NARRATIVES[activeEvidence]?.(scenario.tools[activeEvidence]) || "No data available."}
               </p>
 
-              <details style={{ marginTop: 24, fontSize: 12 }}>
+              <AdvancedDetails evidenceKey={activeEvidence} data={scenario.tools[activeEvidence]} />
+
+              <details style={{ marginTop: 20, fontSize: 12 }}>
                 <summary style={{ cursor: "pointer", color: "#aaa", userSelect: "none" }}>View raw evidence</summary>
                 <pre style={{ marginTop: 8, fontSize: 11, color: "#888", fontFamily: "monospace", background: "#fafafa", padding: 12, borderRadius: 8, overflowX: "auto", whiteSpace: "pre-wrap" }}>
                   {JSON.stringify(scenario.tools[activeEvidence], null, 2)}
@@ -666,7 +771,9 @@ export default function InspectPage() {
             {NARRATIVES[activeEvidence]?.(scenario.tools[activeEvidence]) || "No data available."}
           </p>
 
-          <details style={{ marginTop: 28, fontSize: 12 }}>
+          <AdvancedDetails evidenceKey={activeEvidence} data={scenario.tools[activeEvidence]} />
+
+          <details style={{ marginTop: 24, fontSize: 12 }}>
             <summary style={{ cursor: "pointer", color: "#aaa", userSelect: "none" }}>View raw evidence</summary>
             <pre style={{ marginTop: 8, fontSize: 11, color: "#888", fontFamily: "monospace", background: "#fafafa", padding: 12, borderRadius: 8, overflowX: "auto", whiteSpace: "pre-wrap" }}>
               {JSON.stringify(scenario.tools[activeEvidence], null, 2)}

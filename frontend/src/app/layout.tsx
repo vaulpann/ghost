@@ -7,18 +7,18 @@ import { ThemeProvider } from "@/components/layout/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ghost — Supply Chain Threat Intelligence",
+  title: "Ghost Resolver — Can you spot the supply chain attack?",
   description:
-    "Real-time LLM-powered analysis of npm, PyPI, and GitHub package releases. Detect supply chain attacks — malicious dependencies, obfuscated code, and backdoors — before they spread.",
+    "Real packages. Real diffs. Inspect the evidence and decide — safe or compromised? A daily challenge that gamifies supply chain threat detection across npm, PyPI, and GitHub.",
   metadataBase: new URL("https://ghost.validia.ai"),
   icons: {
     icon: "/favicon.png",
     apple: "/favicon.png",
   },
   openGraph: {
-    title: "Ghost — Supply Chain Threat Intelligence",
+    title: "Ghost Resolver — Can you spot the supply chain attack?",
     description:
-      "Real-time LLM-powered analysis of npm, PyPI, and GitHub package releases. Detect supply chain attacks before they spread.",
+      "Real packages. Real diffs. Inspect the evidence and make your call. A daily challenge gamifying supply chain security for developers.",
     url: "https://ghost.validia.ai",
     siteName: "Ghost",
     locale: "en_US",
@@ -26,9 +26,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ghost — Supply Chain Threat Intelligence",
+    title: "Ghost Resolver — Can you spot the supply chain attack?",
     description:
-      "Real-time LLM-powered analysis of npm, PyPI, and GitHub package releases. Detect supply chain attacks before they spread.",
+      "Real packages. Real diffs. A daily supply chain security challenge. Can you tell safe updates from compromised ones?",
     creator: "@pjvann",
     site: "@pjvann",
   },
@@ -38,6 +38,7 @@ export const metadata: Metadata = {
   },
   keywords: [
     "supply chain security",
+    "supply chain security game",
     "npm security",
     "pypi security",
     "package analysis",
@@ -47,6 +48,9 @@ export const metadata: Metadata = {
     "malicious packages",
     "typosquatting detection",
     "open source security",
+    "security challenge",
+    "ctf",
+    "gamified security",
   ],
   authors: [{ name: "Paul Vann", url: "https://x.com/pjvann" }],
   creator: "Validia",
