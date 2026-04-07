@@ -7,30 +7,40 @@ import { ThemeProvider } from "@/components/layout/theme-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Ghost Resolver — Can you spot the supply chain attack?",
+  title: "Ghost Resolver | Can you spot the supply chain attack?",
   description:
-    "Real packages. Real diffs. Inspect the evidence and decide — safe or compromised? A daily challenge that gamifies supply chain threat detection across npm, PyPI, and GitHub.",
+    "A daily challenge that gamifies supply chain threat detection. Real packages, real diffs, real npm and PyPI data. Review 6 dimensions of evidence and make the call: safe or compromised?",
   metadataBase: new URL("https://ghost.validia.ai"),
   icons: {
     icon: "/favicon.png",
     apple: "/favicon.png",
   },
   openGraph: {
-    title: "Ghost Resolver — Can you spot the supply chain attack?",
+    title: "Ghost Resolver | Can you spot the supply chain attack?",
     description:
-      "Real packages. Real diffs. Inspect the evidence and make your call. A daily challenge gamifying supply chain security for developers.",
+      "A daily challenge gamifying supply chain security. Real packages, real diffs. Review the evidence and make the call.",
     url: "https://ghost.validia.ai",
-    siteName: "Ghost",
+    siteName: "Ghost Resolver",
     locale: "en_US",
     type: "website",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Ghost Resolver - Can you spot the supply chain attack?",
+        type: "image/png",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ghost Resolver — Can you spot the supply chain attack?",
+    title: "Ghost Resolver | Can you spot the supply chain attack?",
     description:
-      "Real packages. Real diffs. A daily supply chain security challenge. Can you tell safe updates from compromised ones?",
+      "A daily supply chain security challenge. Real packages, real diffs. Can you tell safe updates from compromised ones?",
     creator: "@pjvann",
     site: "@pjvann",
+    images: ["/opengraph-image"],
   },
   robots: {
     index: true,
@@ -54,6 +64,12 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Paul Vann", url: "https://x.com/pjvann" }],
   creator: "Validia",
+  other: {
+    // LinkedIn-specific
+    "linkedin:card": "summary_large_image",
+    // Force cache refresh
+    "og:updated_time": new Date().toISOString(),
+  },
 };
 
 export const viewport: Viewport = {
