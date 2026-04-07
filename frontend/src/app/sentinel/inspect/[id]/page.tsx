@@ -13,12 +13,12 @@ function getSessionId(): string {
 }
 
 const EVIDENCE = [
-  { key: "identity", label: "Identity", img: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=200&h=200&fit=crop", color: "#6366f1" },
-  { key: "timing", label: "Timeline", img: "https://images.unsplash.com/photo-1501139083538-0139583c060f?w=200&h=200&fit=crop", color: "#0ea5e9" },
-  { key: "shape", label: "Structure", img: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=200&h=200&fit=crop", color: "#10b981" },
-  { key: "behavior", label: "Behavior", img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop", color: "#f59e0b" },
-  { key: "flow", label: "Data Flow", img: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=200&h=200&fit=crop", color: "#ef4444" },
-  { key: "context", label: "Context", img: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=200&h=200&fit=crop", color: "#8b5cf6" },
+  { key: "identity", label: "Identity", img: "/sentinel-identity.jpg", color: "#6366f1" },
+  { key: "timing", label: "Timeline", img: "/sentinel-timeline.jpg", color: "#0ea5e9" },
+  { key: "shape", label: "Structure", img: "/sentinel-structure.jpg", color: "#10b981" },
+  { key: "behavior", label: "Behavior", img: "/sentinel-behavior.jpg", color: "#f59e0b" },
+  { key: "flow", label: "Data Flow", img: "/sentinel-dataflow.jpg", color: "#ef4444" },
+  { key: "context", label: "Context", img: "/sentinel-context.jpg", color: "#8b5cf6" },
 ];
 
 // No grid — tiles are positioned in a rotating circle
