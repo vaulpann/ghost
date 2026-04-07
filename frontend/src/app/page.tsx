@@ -94,39 +94,35 @@ export default function ResolverPage() {
 
           <Link
             href={`/sentinel/inspect/${daily.id}`}
-            className="group block rounded-2xl glass glass-hover overflow-hidden"
+            className="group block rounded-2xl glass glass-hover p-6"
           >
-            {/* Featured image */}
-            <div className="relative w-full" style={{ height: "clamp(160px, 28vw, 240px)" }}>
+            <div className="flex items-center gap-5">
               <img
                 src={PUZZLE_IMAGES[0]}
                 alt=""
-                className="w-full h-full object-cover"
-                style={{ filter: "brightness(0.85) saturate(0.9)" }}
+                className="shrink-0 rounded-xl object-cover"
+                style={{ width: 80, height: 80 }}
               />
-              <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 60%)" }} />
-              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+              <div className="flex-1">
                 <div className="flex items-center gap-2.5 mb-1.5">
-                  <span className="font-bold text-[20px] sm:text-[22px] text-white drop-shadow-sm">
+                  <span className="font-semibold text-[20px] sm:text-[22px] text-foreground/90 group-hover:text-foreground transition-colors">
                     {daily.package_name}
                   </span>
                   <RegistryBadge registry={daily.registry} />
                 </div>
-                <p className="text-[13px] text-white/60 font-mono">
+                <p className="text-[13px] text-muted-foreground/50 font-mono">
                   {daily.version_from || "?"} &rarr; {daily.version_to || "?"}
                 </p>
+                {daily.total_inspections > 0 && (
+                  <p className="text-[11px] text-muted-foreground/40 mt-2">
+                    {daily.total_inspections} inspections completed
+                  </p>
+                )}
               </div>
-              <div className="absolute top-4 right-4 rounded-lg bg-white/90 backdrop-blur-sm px-4 py-2 text-[13px] font-semibold text-[#1e3a5f] group-hover:bg-white transition-colors shrink-0 shadow-sm">
+              <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors shrink-0">
                 Play
               </div>
             </div>
-            {daily.total_inspections > 0 && (
-              <div className="px-5 sm:px-6 py-3 border-t border-foreground/[0.04]">
-                <p className="text-[11px] text-muted-foreground/40">
-                  {daily.total_inspections} inspections completed
-                </p>
-              </div>
-            )}
           </Link>
         </div>
       )}
