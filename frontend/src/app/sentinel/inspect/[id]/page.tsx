@@ -21,19 +21,7 @@ const EVIDENCE = [
   { key: "context", label: "Context", img: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=200&h=200&fit=crop", color: "#8b5cf6" },
 ];
 
-// 3x3 grid positions (excluding center=vote, and corners shifted like the ref image)
-// Row 1: top-left, top-center, top-right
-// Row 2: mid-left, [CENTER=vote], mid-right
-// Row 3: bot-left, bot-center, bot-right
-// Only 6 tiles + center action + 2 empty spots
-const GRID_POS = [
-  { gridRow: 1, gridColumn: 1 }, // Identity — top-left
-  { gridRow: 1, gridColumn: 2 }, // Timeline — top-center
-  { gridRow: 1, gridColumn: 3 }, // Structure — top-right
-  { gridRow: 3, gridColumn: 1 }, // Behavior — bottom-left
-  { gridRow: 3, gridColumn: 2 }, // Data Flow — bottom-center
-  { gridRow: 3, gridColumn: 3 }, // Context — bottom-right
-];
+// No grid — tiles are positioned in a rotating circle
 
 const NARRATIVES: Record<string, (d: any) => string> = {
   identity: (d) => {
@@ -243,49 +231,64 @@ export default function InspectPage() {
         </p>
       </div>
 
-      {/* 3x3 Grid — evidence tiles + center vote button */}
-      <div style={{
-        position: "absolute", top: "50%", left: "52%", transform: "translate(-50%, -50%)",
-        display: "grid", gridTemplateColumns: "repeat(3, 130px)", gridTemplateRows: "repeat(3, 130px)",
-        gap: 16,
+      {/* Rotating circle of evidence tiles */}
+      <div className="orbit-container" style={{
+        position: "absolute", top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 440, height: 440,
       }}>
-        {/* Top row: 3 evidence tiles */}
-        {EVIDENCE.slice(0, 3).map((ev, i) => (
-          <EvidenceTile key={ev.key} ev={ev} pos={GRID_POS[i]}
-            active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
-            onClick={() => openEvidence(ev.key)} />
-        ))}
+        {/* Slow rotating ring */}
+        <div className="orbit-ring" style={{
+          position: "absolute", inset: 0,
+          animation: "orbitSpin 60s linear infinite",
+        }}>
+          {EVIDENCE.map((ev, i) => {
+            const angle = (i * 60) - 90; // 6 items, 60° apart, start from top
+            const rad = angle * (Math.PI / 180);
+            const radius = 185; // distance from center
+            const x = Math.cos(rad) * radius;
+            const y = Math.sin(rad) * radius;
+            return (
+              <div
+                key={ev.key}
+                style={{
+                  position: "absolute",
+                  left: "50%", top: "50%",
+                  transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                }}
+              >
+                {/* Counter-rotate so tiles stay upright */}
+                <div style={{ animation: "orbitCounterSpin 60s linear infinite" }}>
+                  <EvidenceTile ev={ev}
+                    active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
+                    onClick={() => openEvidence(ev.key)} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-        {/* Middle row: left evidence, CENTER VOTE, right evidence */}
-        {/* We only have 6 evidence items, so middle-left and middle-right are empty or rearranged */}
-        {/* Using the center cell for the vote button */}
-        <div style={{ gridRow: 2, gridColumn: 1 }} />
+        {/* Center VOTE button (does not rotate) */}
         <button
           onClick={() => { setActiveEvidence(null); setShowVote(true); }}
           style={{
-            gridRow: 2, gridColumn: 2,
-            width: 130, height: 130, borderRadius: 24,
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%)",
+            width: 110, height: 110, borderRadius: 28,
             background: showVote ? "#111" : "#fff",
             border: "2px solid #e0e0e0",
             cursor: "pointer", display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center", gap: 4,
             transition: "all 0.3s",
-            boxShadow: showVote ? "0 8px 30px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+            boxShadow: showVote ? "0 8px 30px rgba(0,0,0,0.12)" : "0 2px 12px rgba(0,0,0,0.06)",
+            zIndex: 5,
           }}
         >
-          <span style={{ fontSize: 14, fontWeight: 700, color: showVote ? "#fff" : "#888", letterSpacing: 1 }}>VOTE</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: showVote ? "#fff" : "#888", letterSpacing: 1.5 }}>VOTE</span>
           <span style={{ fontSize: 10, color: showVote ? "rgba(255,255,255,0.6)" : "#ccc" }}>
-            {viewed.size}/6 viewed
+            {viewed.size}/6
           </span>
         </button>
-        <div style={{ gridRow: 2, gridColumn: 3 }} />
-
-        {/* Bottom row: 3 evidence tiles */}
-        {EVIDENCE.slice(3, 6).map((ev, i) => (
-          <EvidenceTile key={ev.key} ev={ev} pos={GRID_POS[i + 3]}
-            active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
-            onClick={() => openEvidence(ev.key)} />
-        ))}
       </div>
 
       {/* Evidence detail panel — slides from right */}
@@ -387,21 +390,28 @@ export default function InspectPage() {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
         }
+        @keyframes orbitSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes orbitCounterSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
+        }
       `}</style>
     </div>
   );
 }
 
-function EvidenceTile({ ev, pos, active, viewed, onClick }: {
-  ev: typeof EVIDENCE[0]; pos: typeof GRID_POS[0];
+function EvidenceTile({ ev, active, viewed, onClick }: {
+  ev: typeof EVIDENCE[0];
   active: boolean; viewed: boolean; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       style={{
-        gridRow: pos.gridRow, gridColumn: pos.gridColumn,
-        width: 130, height: 130, borderRadius: 24, overflow: "hidden",
+        width: 110, height: 110, borderRadius: 24, overflow: "hidden",
         border: active ? `3px solid ${ev.color}` : viewed ? "2px solid #ddd" : "2px solid #e8e8e8",
         cursor: "pointer", position: "relative",
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
