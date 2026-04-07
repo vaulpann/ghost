@@ -13,6 +13,27 @@ function getSessionId(): string {
   return id;
 }
 
+// Small abstract icons per registry — deterministic based on package name
+function PuzzleIcon({ name, registry }: { name: string; registry: string }) {
+  // Generate a consistent color from the package name
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash % 360);
+  const bg = `hsl(${hue}, 25%, 92%)`;
+  const fg = `hsl(${hue}, 40%, 45%)`;
+
+  return (
+    <div style={{
+      width: 40, height: 40, borderRadius: 10, background: bg,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 16, fontWeight: 700, color: fg, flexShrink: 0,
+      fontFamily: "monospace",
+    }}>
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
 export default function SentinelPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [player, setPlayer] = useState<any>(null);
@@ -50,7 +71,7 @@ export default function SentinelPage() {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-in">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">
-            Sentinel
+            Resolver
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
             Inspect packages. Spot supply chain threats.
@@ -83,8 +104,9 @@ export default function SentinelPage() {
             href={`/sentinel/inspect/${daily.id}`}
             className="group block rounded-2xl glass glass-hover p-6"
           >
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center gap-4">
+              <PuzzleIcon name={daily.package_name} registry={daily.registry} />
+              <div className="flex-1">
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <span className="font-semibold text-[18px] text-foreground/90 group-hover:text-foreground transition-colors">
                     {daily.package_name}
@@ -95,7 +117,7 @@ export default function SentinelPage() {
                   {daily.version_from || "?"} &rarr; {daily.version_to || "?"}
                 </p>
               </div>
-              <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors">
+              <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors shrink-0">
                 Play
               </div>
             </div>
@@ -126,6 +148,8 @@ export default function SentinelPage() {
                 className="group flex items-center gap-4 rounded-xl glass glass-hover p-4 animate-fade-in"
                 style={{ animationDelay: `${i * 0.03}s` }}
               >
+                <PuzzleIcon name={s.package_name} registry={s.registry} />
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 sm:gap-2.5 mb-1 sm:mb-1.5 flex-wrap">
                     <span className="font-medium text-[13px] text-foreground/80 group-hover:text-foreground transition-colors">
@@ -136,9 +160,6 @@ export default function SentinelPage() {
                       {s.version_from || "?"} &rarr; {s.version_to || "?"}
                     </span>
                   </div>
-                  <p className="text-[12px] text-muted-foreground/40">
-                    {s.difficulty.charAt(0).toUpperCase() + s.difficulty.slice(1)} difficulty
-                  </p>
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
@@ -149,7 +170,7 @@ export default function SentinelPage() {
                   ) : (
                     <span className="text-[11px] text-[#1e3a5f] font-medium">New</span>
                   )}
-                  <span className="text-[11px] text-muted-foreground/20 w-14 text-right">
+                  <span className="text-[11px] text-muted-foreground/20">
                     &rarr;
                   </span>
                 </div>
