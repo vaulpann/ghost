@@ -124,7 +124,7 @@ export default function ResolverPage() {
             <h2 className="text-[15px] font-medium text-foreground/60">Today's Challenges</h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl">
             {dailies.map((d, idx) => {
               const res = completed[d.id];
               if (res) {
@@ -133,8 +133,7 @@ export default function ResolverPage() {
                     <img
                       src={PUZZLE_IMAGES[idx]}
                       alt=""
-                      className="w-full object-cover"
-                      style={{ height: 160 }}
+                      className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square"
                     />
                     <div className="p-4">
                       <div className="flex items-center gap-2 mb-2">
@@ -168,8 +167,7 @@ export default function ResolverPage() {
                   <img
                     src={PUZZLE_IMAGES[idx]}
                     alt=""
-                    className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-                    style={{ height: 160 }}
+                    className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square group-hover:scale-[1.02] transition-transform duration-300"
                   />
                   <div className="p-4">
                     <div className="flex items-center gap-2 mb-1.5">
