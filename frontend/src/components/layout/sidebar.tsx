@@ -10,6 +10,7 @@ const navigation = [
   { name: "Analyses", href: "/analyses", icon: "A" },
   { name: "Watchlist", href: "/packages", icon: "W" },
   { name: "About", href: "/about", icon: "?" },
+  { name: "Leaderboard", href: "#", icon: "L", soon: true },
 ];
 
 const socials = [
@@ -70,6 +71,20 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-3 pt-4 space-y-0.5">
         {navigation.map((item) => {
+          if ((item as any).soon) {
+            return (
+              <div
+                key={item.name}
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-muted-foreground/40 cursor-default"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-semibold bg-foreground/[0.03] text-muted-foreground/30">
+                  {item.icon}
+                </span>
+                {item.name}
+                <span className="text-[9px] text-muted-foreground/30 ml-auto">soon</span>
+              </div>
+            );
+          }
           const isActive =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
