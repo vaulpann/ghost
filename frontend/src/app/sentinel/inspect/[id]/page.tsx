@@ -262,8 +262,14 @@ export default function InspectPage() {
 
   useEffect(() => {
     // If already completed, show saved result immediately
-    const saved = getCompleted()[params.id as string];
+    const allCompleted = getCompleted();
+    const saved = allCompleted[params.id as string];
     if (saved) setResult(saved);
+
+    // Auto-show help if user hasn't completed any challenges yet
+    if (Object.keys(allCompleted).length === 0) {
+      setShowHelp(true);
+    }
 
     async function load() {
       try {

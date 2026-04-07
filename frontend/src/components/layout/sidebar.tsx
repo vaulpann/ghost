@@ -9,6 +9,7 @@ const navigation = [
   { name: "Resolver", href: "/", icon: "R" },
   { name: "Analyses", href: "/analyses", icon: "A" },
   { name: "Watchlist", href: "/packages", icon: "W" },
+  { name: "About", href: "/about", icon: "?" },
 ];
 
 const socials = [
