@@ -141,6 +141,7 @@ export default function InspectPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const startTime = useRef(Date.now());
 
   useEffect(() => {
@@ -227,7 +228,16 @@ export default function InspectPage() {
     return (
       <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", flexDirection: "column" }}>
         {/* Header */}
-        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid #f0f0f0" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+          <Link href="/" style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            fontSize: 13, color: "#999", textDecoration: "none", marginBottom: 8,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Resolver
+          </Link>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: "#111", margin: 0, lineHeight: 1.1 }}>
             {scenario.package_name}
           </h1>
@@ -430,6 +440,22 @@ export default function InspectPage() {
           </div>
         )}
 
+        {/* Help button */}
+        <button
+          onClick={() => setShowHelp(true)}
+          style={{
+            position: "fixed", bottom: 20, right: 20, zIndex: 40,
+            width: 44, height: 44, borderRadius: "50%",
+            background: "#fff", border: "1px solid #e0e0e0",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 18, fontWeight: 700, color: "#999",
+          }}
+        >?</button>
+
+        {/* Help overlay */}
+        {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} isMobile={true} />}
+
         <style>{`
           @keyframes slideUp {
             from { transform: translateY(100%); }
@@ -443,6 +469,19 @@ export default function InspectPage() {
   // === DESKTOP INSPECTION ===
   return (
     <div style={{ height: "calc(100vh - 56px)", position: "relative", overflow: "hidden" }}>
+
+      {/* Back button */}
+      <Link href="/" style={{
+        position: "absolute", top: 24, left: 28, zIndex: 20,
+        display: "inline-flex", alignItems: "center", gap: 6,
+        fontSize: 13, color: "#999", textDecoration: "none",
+        transition: "color 0.15s",
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+        Resolver
+      </Link>
 
       {/* Lower-left: Package info */}
       <div style={{ position: "absolute", bottom: 40, left: 40, zIndex: 20 }}>
@@ -610,6 +649,22 @@ export default function InspectPage() {
         </div>
       )}
 
+      {/* Help button */}
+      <button
+        onClick={() => setShowHelp(true)}
+        style={{
+          position: "absolute", bottom: 28, right: 28, zIndex: 20,
+          width: 44, height: 44, borderRadius: "50%",
+          background: "#fff", border: "1px solid #e0e0e0",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 18, fontWeight: 700, color: "#999",
+        }}
+      >?</button>
+
+      {/* Help overlay */}
+      {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} isMobile={false} />}
+
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
@@ -672,5 +727,49 @@ function EvidenceTile({ ev, active, viewed, onClick }: {
         </div>
       )}
     </button>
+  );
+}
+
+function HelpOverlay({ onClose, isMobile }: { onClose: () => void; isMobile: boolean }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 100,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)" }} />
+      <div style={{
+        position: "relative", background: "#fff", borderRadius: 20,
+        padding: isMobile ? "24px 20px" : "32px 28px",
+        maxWidth: isMobile ? "calc(100vw - 32px)" : 420,
+        width: "100%",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+        animation: "fadeInScale 0.2s ease-out",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>How to Play</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "#ccc", padding: 4 }}>×</button>
+        </div>
+        <div style={{ fontSize: 14, color: "#555", lineHeight: 1.8 }}>
+          <p style={{ marginBottom: 12 }}>
+            A package update just dropped. Your job: figure out if it's <strong>safe</strong> or <strong>malicious</strong>.
+          </p>
+          <p style={{ marginBottom: 12 }}>
+            Tap the <strong>6 evidence tiles</strong> to inspect different dimensions — who published it, when, what changed in the code, and more.
+          </p>
+          <p style={{ marginBottom: 12 }}>
+            Once you've reviewed the evidence, hit <strong>VOTE</strong> to submit your verdict: Safe, Flag, or Malicious. Set your confidence level and submit.
+          </p>
+          <p style={{ color: "#999", fontSize: 13 }}>
+            Real packages. Real version diffs. Can you spot the supply chain attack?
+          </p>
+        </div>
+        <style>{`
+          @keyframes fadeInScale {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
+      </div>
+    </div>
   );
 }
