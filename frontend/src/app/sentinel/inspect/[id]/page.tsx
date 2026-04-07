@@ -181,6 +181,12 @@ export default function InspectPage() {
         tools_used: Array.from(viewed),
       });
       setResult(res);
+      // Save completion to localStorage so the list page can show results
+      try {
+        const completed = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+        completed[scenario.id] = { verdict, confidence, ...res };
+        localStorage.setItem("ghost-completed", JSON.stringify(completed));
+      } catch {}
     } catch (e: any) {
       if (e.message?.includes("409")) alert("Already inspected.");
     } finally { setSubmitting(false); }
