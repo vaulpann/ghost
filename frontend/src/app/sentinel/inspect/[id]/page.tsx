@@ -12,146 +12,140 @@ function getSessionId(): string {
   return id;
 }
 
-// 6 evidence tiles with labels and placeholder icons
 const EVIDENCE = [
-  { key: "identity", label: "Identity", short: "ID", color: "#6366f1" },
-  { key: "timing", label: "Timeline", short: "TL", color: "#0ea5e9" },
-  { key: "shape", label: "Structure", short: "ST", color: "#10b981" },
-  { key: "behavior", label: "Behavior", short: "BH", color: "#f59e0b" },
-  { key: "flow", label: "Data Flow", short: "DF", color: "#ef4444" },
-  { key: "context", label: "Context", short: "CX", color: "#8b5cf6" },
+  { key: "identity", label: "Identity", img: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=200&h=200&fit=crop", color: "#6366f1" },
+  { key: "timing", label: "Timeline", img: "https://images.unsplash.com/photo-1501139083538-0139583c060f?w=200&h=200&fit=crop", color: "#0ea5e9" },
+  { key: "shape", label: "Structure", img: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=200&h=200&fit=crop", color: "#10b981" },
+  { key: "behavior", label: "Behavior", img: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=200&h=200&fit=crop", color: "#f59e0b" },
+  { key: "flow", label: "Data Flow", img: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=200&h=200&fit=crop", color: "#ef4444" },
+  { key: "context", label: "Context", img: "https://images.unsplash.com/photo-1456324504439-367cee3b3c32?w=200&h=200&fit=crop", color: "#8b5cf6" },
 ];
 
-// Orbital positions for 6 items in a circle (top, top-right, bot-right, bot, bot-left, top-left)
-const ORBIT_POSITIONS = [
-  { top: "5%", left: "50%", transform: "translate(-50%, 0)" },
-  { top: "22%", left: "82%", transform: "translate(-50%, -50%)" },
-  { top: "68%", left: "82%", transform: "translate(-50%, -50%)" },
-  { top: "88%", left: "50%", transform: "translate(-50%, -100%)" },
-  { top: "68%", left: "18%", transform: "translate(-50%, -50%)" },
-  { top: "22%", left: "18%", transform: "translate(-50%, -50%)" },
+// 3x3 grid positions (excluding center=vote, and corners shifted like the ref image)
+// Row 1: top-left, top-center, top-right
+// Row 2: mid-left, [CENTER=vote], mid-right
+// Row 3: bot-left, bot-center, bot-right
+// Only 6 tiles + center action + 2 empty spots
+const GRID_POS = [
+  { gridRow: 1, gridColumn: 1 }, // Identity — top-left
+  { gridRow: 1, gridColumn: 2 }, // Timeline — top-center
+  { gridRow: 1, gridColumn: 3 }, // Structure — top-right
+  { gridRow: 3, gridColumn: 1 }, // Behavior — bottom-left
+  { gridRow: 3, gridColumn: 2 }, // Data Flow — bottom-center
+  { gridRow: 3, gridColumn: 3 }, // Context — bottom-right
 ];
 
-// Placeholder narratives — will be replaced by agent-generated content
-const PLACEHOLDER_NARRATIVES: Record<string, (data: any) => string> = {
+const NARRATIVES: Record<string, (d: any) => string> = {
   identity: (d) => {
     const name = d.publisher || "Unknown";
+    const usual = d.is_usual_publisher;
     const age = d.account_age_days;
     const pkgs = d.previous_packages;
-    const usual = d.is_usual_publisher;
     const trust = ((d.trust_score || 0) * 100).toFixed(0);
-    let text = `The publisher "${name}" `;
-    if (usual) {
-      text += `is the regular maintainer of this package. `;
-    } else {
-      text += `is NOT the usual publisher of this package — this is a different account than who normally releases updates. `;
-    }
-    if (age) text += `Their account is ${age} days old. `;
-    if (pkgs != null) text += `They have published ${pkgs} other packages on the registry. `;
-    text += `Trust assessment: ${trust}%.`;
-    if (d.maintainer_count) text += ` There ${d.maintainer_count === 1 ? "is 1 maintainer" : `are ${d.maintainer_count} maintainers`} on this project.`;
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    const maintainers = d.all_maintainers?.join(", ") || name;
+    let t = usual
+      ? `${name} is the regular maintainer of this package and has been the consistent publisher across versions.`
+      : `${name} is NOT the usual publisher of this package. This is a different account than who normally releases updates, which warrants attention.`;
+    if (age) t += ` Their account was created ${age} days ago.`;
+    if (pkgs != null) t += ` They have published ${pkgs} other packages on the registry.`;
+    t += ` Current trust assessment: ${trust}%.`;
+    if (d.maintainer_count && d.maintainer_count > 1) t += ` The project has ${d.maintainer_count} listed maintainers: ${maintainers}.`;
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
   timing: (d) => {
-    const history = d.release_history || [];
+    const h = d.release_history || [];
     const normal = d.cadence_normal;
-    let text = `This package has ${history.length} recorded releases. `;
-    if (history.length > 0) {
-      const latest = history[history.length - 1];
-      text += `The most recent version (${latest.version}) was published on ${latest.date}. `;
-      if (latest.gap_days != null) {
-        text += `There was a ${latest.gap_days}-day gap since the previous release. `;
-      }
+    let t = `This package has ${h.length} recorded releases in its version history. `;
+    if (h.length > 0) {
+      const latest = h[h.length - 1];
+      t += `The latest version (${latest.version}) was published on ${latest.date}`;
+      if (latest.gap_days != null) t += `, which was ${latest.gap_days} days after the previous release`;
+      t += ". ";
+      const longGaps = h.filter((r: any) => r.gap_days && r.gap_days > 180);
+      if (longGaps.length > 0) t += `There ${longGaps.length === 1 ? "is" : "are"} ${longGaps.length} gap${longGaps.length > 1 ? "s" : ""} longer than 6 months in the release history. `;
+      const sameDay = h.filter((r: any) => r.gap_days === 0);
+      if (sameDay.length > 1) t += `${sameDay.length} versions were published on the same day. `;
     }
-    text += normal ? "The release cadence appears normal." : "The release pattern shows anomalies.";
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    t += normal ? "Overall, the release cadence appears consistent with normal development activity." : "The release pattern shows notable irregularities that may warrant further review.";
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
   shape: (d) => {
-    const added = d.deps_added || [];
-    const removed = d.deps_removed || [];
-    const filesA = d.files_added || [];
-    const filesR = d.files_removed || [];
-    const stats = d.diff_stats || {};
-    let text = "";
-    if (stats.files_changed) text += `${stats.files_changed} files were changed in this update. `;
-    if (stats.insertions) text += `${stats.insertions} lines added, ${stats.deletions || 0} lines removed. `;
-    if (added.length) text += `New dependencies added: ${added.join(", ")}. `;
-    if (removed.length) text += `Dependencies removed: ${removed.join(", ")}. `;
-    if (filesA.length) text += `${filesA.length} new file${filesA.length > 1 ? "s" : ""} added${filesA.length <= 3 ? ": " + filesA.join(", ") : ""}. `;
-    if (filesR.length) text += `${filesR.length} file${filesR.length > 1 ? "s" : ""} removed. `;
-    if (!text) text = "No significant structural changes detected.";
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    const da = d.deps_added || []; const dr = d.deps_removed || [];
+    const fa = d.files_added || []; const fr = d.files_removed || [];
+    const s = d.diff_stats || {};
+    let t = "";
+    if (s.files_changed) t += `This update touches ${s.files_changed} files with ${s.insertions || 0} insertions and ${s.deletions || 0} deletions. `;
+    if (da.length) t += `New dependencies were introduced: ${da.join(", ")}. This is notable because new dependencies expand the supply chain surface. `;
+    if (dr.length) t += `Dependencies removed: ${dr.join(", ")}. `;
+    if (fa.length > 0 && fa.length <= 5) t += `New files added: ${fa.join(", ")}. `;
+    else if (fa.length > 5) t += `${fa.length} new files were added to the package. `;
+    if (fr.length > 0 && fr.length <= 5) t += `Files removed: ${fr.join(", ")}. `;
+    else if (fr.length > 5) t += `${fr.length} files were removed from the package. `;
+    if (!t) t = "The structural footprint of this update is minimal — no significant dependency or file changes detected.";
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
   behavior: (d) => {
     const cats = d.categories || {};
-    const suspicious = Object.entries(cats).filter(([, v]) => v === "red");
-    const unusual = Object.entries(cats).filter(([, v]) => v === "yellow");
-    let text = "";
-    if (suspicious.length === 0 && unusual.length === 0) {
-      text = "All behavioral signals appear normal for this type of package. No suspicious runtime activity detected.";
+    const red = Object.entries(cats).filter(([, v]) => v === "red");
+    const yellow = Object.entries(cats).filter(([, v]) => v === "yellow");
+    const green = Object.entries(cats).filter(([, v]) => v === "green");
+    let t = "";
+    if (red.length === 0 && yellow.length === 0) {
+      t = `All behavioral signals for this update appear normal. The package operates within expected parameters for its category: ${green.map(([k]) => k.replace(/_/g, " ")).join(", ")} — all within expected norms.`;
     } else {
-      if (suspicious.length) {
-        text += `Suspicious activity detected in: ${suspicious.map(([k]) => k.replace(/_/g, " ")).join(", ")}. `;
-      }
-      if (unusual.length) {
-        text += `Unusual but potentially legitimate activity in: ${unusual.map(([k]) => k.replace(/_/g, " ")).join(", ")}. `;
-      }
+      if (red.length) t += `Suspicious behavioral signals detected in: ${red.map(([k]) => k.replace(/_/g, " ")).join(", ")}. These activities are atypical for this type of package and require careful evaluation. `;
+      if (yellow.length) t += `Unusual but potentially legitimate activity observed in: ${yellow.map(([k]) => k.replace(/_/g, " ")).join(", ")}. `;
+      if (green.length) t += `Normal activity in: ${green.map(([k]) => k.replace(/_/g, " ")).join(", ")}.`;
     }
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    if (d.install_scripts && Object.keys(d.install_scripts).length > 0) {
+      t += ` Install lifecycle scripts are present: ${Object.keys(d.install_scripts).join(", ")}.`;
+    }
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
   flow: (d) => {
-    const connections = d.outbound_connections || [];
+    const conn = d.outbound_connections || [];
     const reads = d.data_reads || [];
-    let text = "";
-    if (connections.length === 0 && reads.length === 0) {
-      text = "No outbound network connections or sensitive data access detected in this update.";
+    let t = "";
+    if (conn.length === 0 && reads.length === 0) {
+      t = "No outbound network connections or sensitive data access patterns were detected in this update. The code does not appear to communicate with external services or read sensitive local data.";
     } else {
-      if (connections.length) {
-        text += `This update references ${connections.length} external endpoint${connections.length > 1 ? "s" : ""}: ${connections.map((c: any) => c.domain).join(", ")}. `;
-      }
-      if (reads.length) {
-        text += `The code accesses: ${reads.join(", ")}. `;
-      }
+      if (conn.length) t += `This update references ${conn.length} external endpoint${conn.length > 1 ? "s" : ""}: ${conn.map((c: any) => `${c.domain} (${c.type})`).join(", ")}. `;
+      if (reads.length) t += `The code accesses the following data: ${reads.join(", ")}. `;
+      t += "These connections and data access patterns should be evaluated in the context of the package's stated purpose.";
     }
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
   context: (d) => {
-    const desc = d.description || "No description available";
-    const summary = d.update_summary || "Unknown changes";
+    const desc = d.description || "No description provided by the maintainer";
+    const summary = d.update_summary || "The specific changes in this update are not clearly documented";
     const mismatch = d.mismatch_score || 0;
-    const downloads = d.weekly_downloads;
-    let text = `This package describes itself as: "${desc}." `;
-    text += `This update: ${summary}. `;
+    const dl = d.weekly_downloads;
+    let t = `This package describes itself as: "${desc}." `;
+    t += `The changes introduced in this update: ${summary}. `;
     if (mismatch > 0.7) {
-      text += `There is a significant mismatch (${(mismatch * 100).toFixed(0)}%) between what this package claims to do and what this update actually introduces.`;
+      t += `There is a significant mismatch (${(mismatch * 100).toFixed(0)}%) between the package's stated purpose and what this update actually introduces. This kind of discrepancy is a strong signal for supply chain compromise.`;
     } else if (mismatch > 0.3) {
-      text += `There is a moderate discrepancy (${(mismatch * 100).toFixed(0)}%) between the package's stated purpose and the changes in this update.`;
+      t += `There is a moderate discrepancy (${(mismatch * 100).toFixed(0)}%) between the package's purpose and the nature of these changes. This could be legitimate feature expansion or could indicate suspicious modification.`;
     } else {
-      text += `The changes align with the package's stated purpose.`;
+      t += `The changes in this update are consistent with the package's stated purpose. No contextual anomalies detected.`;
     }
-    if (downloads) text += ` This package has ${downloads.toLocaleString()} weekly downloads.`;
-    if (d.flags?.length) text += "\n\n" + d.flags.join("\n");
-    return text;
+    if (dl) t += ` This package receives approximately ${dl.toLocaleString()} downloads per week.`;
+    if (d.flags?.length) t += "\n\n" + d.flags.map((f: string) => `• ${f}`).join("\n");
+    return t;
   },
 };
-
-const ATTACK_TYPES = [
-  "Account Hijack", "Maintainer Takeover", "Dependency Confusion",
-  "Maintainer Sabotage", "CI/CD Poisoning", "Build Compromise",
-  "Social Engineering", "Domain Takeover", "Typosquatting", "Worm",
-];
 
 export default function InspectPage() {
   const params = useParams();
   const [scenario, setScenario] = useState<any>(null);
   const [activeEvidence, setActiveEvidence] = useState<string | null>(null);
+  const [showVote, setShowVote] = useState(false);
   const [verdict, setVerdict] = useState<string | null>(null);
-  const [attackGuess, setAttackGuess] = useState("");
   const [confidence, setConfidence] = useState(70);
   const [reasoning, setReasoning] = useState("");
   const [viewed, setViewed] = useState<Set<string>>(new Set());
@@ -174,6 +168,7 @@ export default function InspectPage() {
 
   const openEvidence = (key: string) => {
     setActiveEvidence(activeEvidence === key ? null : key);
+    setShowVote(false);
     setViewed(prev => new Set(Array.from(prev).concat(key)));
   };
 
@@ -183,7 +178,7 @@ export default function InspectPage() {
     try {
       const res = await submitVerdict(scenario.id, {
         session_id: getSessionId(), verdict, confidence: confidence / 100,
-        attack_type_guess: verdict !== "safe" ? attackGuess.toLowerCase().replace(/ /g, "_") : null,
+        attack_type_guess: null,
         evidence_notes: { tools_checked: Array.from(viewed), reasoning },
         time_taken_secs: (Date.now() - startTime.current) / 1000,
         tools_used: Array.from(viewed),
@@ -195,32 +190,34 @@ export default function InspectPage() {
   };
 
   if (loading || !scenario) {
-    return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f7f7" }}>
-      <p style={{ color: "#999", fontFamily: "sans-serif" }}>Loading...</p>
+    return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#999" }}>Loading...</p>
     </div>;
   }
 
   // === RESULTS ===
   if (result) {
     return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f7f7f7", fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
+      <div style={{ height: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ maxWidth: 480, textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>{result.is_correct ? "Correct" : "Wrong"}</div>
-          <h2 style={{ fontSize: 28, fontWeight: 700, color: result.is_correct ? "#16a34a" : "#dc2626", fontFamily: "Georgia, serif", marginBottom: 8 }}>
-            {result.score > 0 ? "+" : ""}{result.score} points
+          <h2 style={{ fontSize: 48, fontWeight: 800, color: result.is_correct ? "#16a34a" : "#dc2626", marginBottom: 4 }}>
+            {result.is_correct ? "Correct" : "Wrong"}
           </h2>
-          <p style={{ fontSize: 15, color: "#666", lineHeight: 1.6, marginBottom: 24 }}>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "#111", marginBottom: 16 }}>
+            {result.score > 0 ? "+" : ""}{result.score} points
+          </p>
+          <p style={{ fontSize: 15, color: "#666", lineHeight: 1.7, marginBottom: 24 }}>
             {result.was_malicious ? result.attack_name : "This was a legitimate, safe update."}
           </p>
           {result.postmortem && (
-            <div style={{ textAlign: "left", background: "#fff", borderRadius: 12, padding: 24, marginBottom: 24, border: "1px solid #e5e5e5" }}>
-              <p style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>Post-Mortem</p>
-              <p style={{ fontSize: 14, color: "#444", lineHeight: 1.7 }}>{result.postmortem}</p>
+            <div style={{ textAlign: "left", background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, border: "1px solid #eee" }}>
+              <p style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8, fontWeight: 600 }}>What happened</p>
+              <p style={{ fontSize: 14, color: "#444", lineHeight: 1.8 }}>{result.postmortem}</p>
             </div>
           )}
           <Link href="/sentinel" style={{
-            display: "inline-block", padding: "12px 32px", background: "#111", color: "#fff",
-            borderRadius: 8, textDecoration: "none", fontSize: 14, fontWeight: 600,
+            display: "inline-block", padding: "14px 40px", background: "#111", color: "#fff",
+            borderRadius: 10, textDecoration: "none", fontSize: 15, fontWeight: 600,
           }}>
             Next Package
           </Link>
@@ -229,116 +226,94 @@ export default function InspectPage() {
     );
   }
 
-  // === INSPECTION — ORBITAL LAYOUT ===
+  // === INSPECTION ===
   return (
-    <div style={{ height: "calc(100vh - 56px)", position: "relative", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
+    <div style={{ height: "calc(100vh - 56px)", position: "relative", overflow: "hidden" }}>
 
-      {/* Lower-left: Package info */}
-      <div style={{ position: "absolute", bottom: 40, left: 40, zIndex: 10 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, fontFamily: "Georgia, serif", color: "#111", margin: 0, lineHeight: 1.2 }}>
+      {/* Lower-left: Package info (with blur effect below) */}
+      <div style={{ position: "absolute", bottom: 40, left: 40, zIndex: 20 }}>
+        <h1 style={{ fontSize: 42, fontWeight: 800, color: "#111", margin: 0, lineHeight: 1.1 }}>
           {scenario.package_name}
         </h1>
-        <p style={{ fontSize: 16, color: "#666", fontFamily: "monospace", marginTop: 4 }}>
+        <p style={{ fontSize: 22, fontWeight: 500, color: "rgba(17,17,17,0.25)", margin: 0, marginTop: -4, filter: "blur(0.5px)" }}>
           {scenario.version_from} → {scenario.version_to}
         </p>
-        <p style={{ fontSize: 12, color: "#bbb", marginTop: 2 }}>
-          Puzzle #{scenario.id.slice(0, 4).toUpperCase()} · {scenario.registry}
+        <p style={{ fontSize: 12, color: "#bbb", marginTop: 6, fontWeight: 500, letterSpacing: 1 }}>
+          PUZZLE #{scenario.id.slice(0, 4).toUpperCase()} · {scenario.registry.toUpperCase()}
         </p>
       </div>
 
-      {/* Center: Orbital evidence tiles */}
+      {/* 3x3 Grid — evidence tiles + center vote button */}
       <div style={{
-        position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-        width: 420, height: 420,
+        position: "absolute", top: "50%", left: "52%", transform: "translate(-50%, -50%)",
+        display: "grid", gridTemplateColumns: "repeat(3, 130px)", gridTemplateRows: "repeat(3, 130px)",
+        gap: 16,
       }}>
-        {EVIDENCE.map((ev, i) => {
-          const pos = ORBIT_POSITIONS[i];
-          const isActive = activeEvidence === ev.key;
-          const isViewed = viewed.has(ev.key);
-          return (
-            <button
-              key={ev.key}
-              onClick={() => openEvidence(ev.key)}
-              style={{
-                position: "absolute", ...pos,
-                width: isActive ? 80 : 72, height: isActive ? 80 : 72,
-                borderRadius: 20,
-                background: isActive ? ev.color : isViewed ? "#fff" : "#f0f0f0",
-                border: isActive ? `2px solid ${ev.color}` : isViewed ? "2px solid #ddd" : "2px solid #e8e8e8",
-                cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 2,
-                transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                boxShadow: isActive ? `0 8px 30px ${ev.color}33` : isViewed ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
-                zIndex: isActive ? 20 : 10,
-              }}
-            >
-              <span style={{
-                fontSize: 14, fontWeight: 700, letterSpacing: 0.5,
-                color: isActive ? "#fff" : isViewed ? "#888" : "#bbb",
-              }}>
-                {ev.short}
-              </span>
-              <span style={{
-                fontSize: 9, fontWeight: 500,
-                color: isActive ? "rgba(255,255,255,0.8)" : isViewed ? "#aaa" : "#ccc",
-              }}>
-                {ev.label}
-              </span>
-            </button>
-          );
-        })}
+        {/* Top row: 3 evidence tiles */}
+        {EVIDENCE.slice(0, 3).map((ev, i) => (
+          <EvidenceTile key={ev.key} ev={ev} pos={GRID_POS[i]}
+            active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
+            onClick={() => openEvidence(ev.key)} />
+        ))}
 
-        {/* Center action area — verdict or prompt */}
-        {!activeEvidence && (
-          <div style={{
-            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            textAlign: "center", width: 200,
-          }}>
-            {viewed.size === 0 ? (
-              <p style={{ fontSize: 14, color: "#bbb" }}>Click evidence to begin investigation</p>
-            ) : (
-              <p style={{ fontSize: 13, color: "#999" }}>{viewed.size}/6 examined</p>
-            )}
-          </div>
-        )}
+        {/* Middle row: left evidence, CENTER VOTE, right evidence */}
+        {/* We only have 6 evidence items, so middle-left and middle-right are empty or rearranged */}
+        {/* Using the center cell for the vote button */}
+        <div style={{ gridRow: 2, gridColumn: 1 }} />
+        <button
+          onClick={() => { setActiveEvidence(null); setShowVote(true); }}
+          style={{
+            gridRow: 2, gridColumn: 2,
+            width: 130, height: 130, borderRadius: 24,
+            background: showVote ? "#111" : "#fff",
+            border: "2px solid #e0e0e0",
+            cursor: "pointer", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 4,
+            transition: "all 0.3s",
+            boxShadow: showVote ? "0 8px 30px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+          }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 700, color: showVote ? "#fff" : "#888", letterSpacing: 1 }}>VOTE</span>
+          <span style={{ fontSize: 10, color: showVote ? "rgba(255,255,255,0.6)" : "#ccc" }}>
+            {viewed.size}/6 viewed
+          </span>
+        </button>
+        <div style={{ gridRow: 2, gridColumn: 3 }} />
+
+        {/* Bottom row: 3 evidence tiles */}
+        {EVIDENCE.slice(3, 6).map((ev, i) => (
+          <EvidenceTile key={ev.key} ev={ev} pos={GRID_POS[i + 3]}
+            active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
+            onClick={() => openEvidence(ev.key)} />
+        ))}
       </div>
 
-      {/* Evidence detail panel — slides in from right when evidence is selected */}
+      {/* Evidence detail panel — slides from right */}
       {activeEvidence && scenario.tools[activeEvidence] && (
         <div style={{
-          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(480px, 45vw)",
-          background: "#fff", borderLeft: "1px solid #e8e8e8",
-          padding: "32px 28px", overflowY: "auto",
-          animation: "slideIn 0.3s ease-out",
-          zIndex: 30,
+          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(460px, 42vw)",
+          background: "#fff", borderLeft: "1px solid #eee",
+          padding: "36px 28px", overflowY: "auto",
+          animation: "slideIn 0.25s ease-out", zIndex: 30,
         }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-            <div>
-              <div style={{
-                display: "inline-block", width: 10, height: 10, borderRadius: 3,
-                background: EVIDENCE.find(e => e.key === activeEvidence)?.color,
-                marginRight: 8,
-              }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#111", textTransform: "uppercase", letterSpacing: 1 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 4, background: EVIDENCE.find(e => e.key === activeEvidence)?.color }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: 1.5 }}>
                 {EVIDENCE.find(e => e.key === activeEvidence)?.label}
               </span>
             </div>
             <button onClick={() => setActiveEvidence(null)} style={{
-              background: "none", border: "none", cursor: "pointer", fontSize: 20, color: "#ccc", padding: 4,
-            }}>
-              ×
-            </button>
+              background: "none", border: "none", cursor: "pointer", fontSize: 24, color: "#ccc", lineHeight: 1,
+            }}>×</button>
           </div>
 
-          {/* Narrative content */}
-          <p style={{ fontSize: 15, color: "#333", lineHeight: 1.8, whiteSpace: "pre-line" }}>
-            {PLACEHOLDER_NARRATIVES[activeEvidence]?.(scenario.tools[activeEvidence]) || "No data available."}
+          <p style={{ fontSize: 15, color: "#333", lineHeight: 1.9, whiteSpace: "pre-line" }}>
+            {NARRATIVES[activeEvidence]?.(scenario.tools[activeEvidence]) || "No data available."}
           </p>
 
-          {/* Raw evidence link for technical users */}
-          <details style={{ marginTop: 24, fontSize: 12, color: "#999" }}>
-            <summary style={{ cursor: "pointer", userSelect: "none" }}>View raw evidence</summary>
+          <details style={{ marginTop: 28, fontSize: 12 }}>
+            <summary style={{ cursor: "pointer", color: "#aaa", userSelect: "none" }}>View raw evidence</summary>
             <pre style={{ marginTop: 8, fontSize: 11, color: "#888", fontFamily: "monospace", background: "#fafafa", padding: 12, borderRadius: 8, overflowX: "auto", whiteSpace: "pre-wrap" }}>
               {JSON.stringify(scenario.tools[activeEvidence], null, 2)}
             </pre>
@@ -346,80 +321,67 @@ export default function InspectPage() {
         </div>
       )}
 
-      {/* Bottom-right: Verdict panel */}
-      <div style={{
-        position: "absolute", bottom: 32, right: 32, width: "min(340px, 35vw)",
-        zIndex: 10,
-      }}>
-        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e5e5e5", padding: 24, boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
-          <p style={{ fontSize: 11, color: "#999", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12, fontWeight: 600 }}>
-            Your Verdict
-          </p>
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            {[
-              { v: "safe", label: "Safe", color: "#16a34a", bg: "#f0fdf4" },
-              { v: "suspicious", label: "Flag", color: "#d97706", bg: "#fffbeb" },
-              { v: "malicious", label: "Malicious", color: "#dc2626", bg: "#fef2f2" },
-            ].map((o) => (
-              <button key={o.v} onClick={() => setVerdict(o.v)} style={{
-                flex: 1, padding: "10px 4px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                border: verdict === o.v ? `2px solid ${o.color}` : "2px solid #e5e5e5",
-                background: verdict === o.v ? o.bg : "#fff",
-                color: verdict === o.v ? o.color : "#888",
-                cursor: "pointer", transition: "all 0.15s",
-              }}>
-                {o.label}
-              </button>
-            ))}
+      {/* Vote panel — shows when center is clicked */}
+      {showVote && !activeEvidence && (
+        <div style={{
+          position: "absolute", top: 0, right: 0, bottom: 0, width: "min(380px, 38vw)",
+          background: "#fff", borderLeft: "1px solid #eee",
+          padding: "36px 28px", animation: "slideIn 0.25s ease-out", zIndex: 30,
+          display: "flex", flexDirection: "column",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: "#111" }}>Your Verdict</span>
+            <button onClick={() => setShowVote(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 24, color: "#ccc" }}>×</button>
           </div>
 
-          {verdict && verdict !== "safe" && (
-            <select value={attackGuess} onChange={(e) => setAttackGuess(e.target.value)} style={{
-              width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #e5e5e5",
-              fontSize: 12, color: "#666", marginBottom: 8, background: "#fafafa",
-            }}>
-              <option value="">Attack type? (bonus)</option>
-              {ATTACK_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          )}
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            {[
+              { v: "safe", label: "Safe", c: "#16a34a", bg: "#f0fdf4" },
+              { v: "suspicious", label: "Flag", c: "#d97706", bg: "#fffbeb" },
+              { v: "malicious", label: "Malicious", c: "#dc2626", bg: "#fef2f2" },
+            ].map((o) => (
+              <button key={o.v} onClick={() => setVerdict(o.v)} style={{
+                flex: 1, padding: "14px 4px", borderRadius: 10, fontSize: 14, fontWeight: 700,
+                border: verdict === o.v ? `2px solid ${o.c}` : "2px solid #eee",
+                background: verdict === o.v ? o.bg : "#fff",
+                color: verdict === o.v ? o.c : "#999",
+                cursor: "pointer", transition: "all 0.15s",
+              }}>{o.label}</button>
+            ))}
+          </div>
 
           <textarea
             value={reasoning}
             onChange={(e) => setReasoning(e.target.value)}
             placeholder="What did you notice? (optional)"
             style={{
-              width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #e5e5e5",
-              fontSize: 12, color: "#444", resize: "none", height: 48, marginBottom: 8,
-              fontFamily: "-apple-system, sans-serif",
+              width: "100%", padding: 12, borderRadius: 10, border: "1px solid #eee",
+              fontSize: 13, color: "#444", resize: "none", height: 80, marginBottom: 16,
+              fontFamily: "'Inter Tight', sans-serif",
             }}
           />
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12, color: "#999" }}>
-            <span>Confidence</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <span style={{ fontSize: 12, color: "#aaa", whiteSpace: "nowrap" }}>Confidence</span>
             <input type="range" min={10} max={100} value={confidence} onChange={(e) => setConfidence(Number(e.target.value))}
               style={{ flex: 1, accentColor: "#111" }} />
-            <span style={{ fontFamily: "monospace", color: "#666" }}>{confidence}%</span>
+            <span style={{ fontSize: 13, fontFamily: "monospace", color: "#666", width: 32 }}>{confidence}%</span>
           </div>
 
-          <button onClick={handleSubmit} disabled={!verdict || submitting} style={{
-            width: "100%", padding: 12, borderRadius: 8, border: "none",
-            background: !verdict || submitting ? "#e5e5e5" : "#111",
-            color: !verdict || submitting ? "#aaa" : "#fff",
-            fontSize: 14, fontWeight: 600, cursor: !verdict || submitting ? "default" : "pointer",
-            transition: "all 0.15s",
-          }}>
-            {submitting ? "Submitting..." : "Submit"}
-          </button>
+          <div style={{ marginTop: "auto" }}>
+            <button onClick={handleSubmit} disabled={!verdict || submitting} style={{
+              width: "100%", padding: 14, borderRadius: 10, border: "none",
+              background: !verdict || submitting ? "#eee" : "#111",
+              color: !verdict || submitting ? "#bbb" : "#fff",
+              fontSize: 15, fontWeight: 700, cursor: !verdict || submitting ? "default" : "pointer",
+              transition: "all 0.15s",
+            }}>
+              {submitting ? "Submitting..." : "Submit"}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Top-right: progress */}
-      <div style={{ position: "absolute", top: 16, right: 24, fontSize: 12, color: "#bbb" }}>
-        {viewed.size}/6 evidence viewed
-      </div>
-
-      {/* CSS animation for slide-in */}
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
@@ -427,5 +389,56 @@ export default function InspectPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function EvidenceTile({ ev, pos, active, viewed, onClick }: {
+  ev: typeof EVIDENCE[0]; pos: typeof GRID_POS[0];
+  active: boolean; viewed: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        gridRow: pos.gridRow, gridColumn: pos.gridColumn,
+        width: 130, height: 130, borderRadius: 24, overflow: "hidden",
+        border: active ? `3px solid ${ev.color}` : viewed ? "2px solid #ddd" : "2px solid #e8e8e8",
+        cursor: "pointer", position: "relative",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        boxShadow: active ? `0 8px 30px ${ev.color}25` : "0 2px 8px rgba(0,0,0,0.04)",
+        transform: active ? "scale(1.05)" : "scale(1)",
+      }}
+    >
+      {/* Background image */}
+      <img
+        src={ev.img}
+        alt={ev.label}
+        style={{
+          width: "100%", height: "100%", objectFit: "cover",
+          filter: active ? "brightness(0.7)" : viewed ? "brightness(0.85) saturate(0.8)" : "brightness(0.9) saturate(0.5)",
+          transition: "all 0.3s",
+        }}
+      />
+      {/* Label overlay */}
+      <div style={{
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        padding: "8px 10px",
+        background: "linear-gradient(transparent, rgba(0,0,0,0.6))",
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#fff", letterSpacing: 0.5 }}>
+          {ev.label}
+        </span>
+      </div>
+      {/* Viewed checkmark */}
+      {viewed && !active && (
+        <div style={{
+          position: "absolute", top: 8, right: 8,
+          width: 20, height: 20, borderRadius: "50%",
+          background: ev.color, display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <span style={{ color: "#fff", fontSize: 12, fontWeight: 700 }}>✓</span>
+        </div>
+      )}
+    </button>
   );
 }

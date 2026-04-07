@@ -7,8 +7,11 @@ export const metadata: Metadata = {
 
 export default function SentinelLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ background: "#f7f7f7", color: "#111", minHeight: "100vh", position: "relative" }}>
-      {children}
-    </div>
+    <>
+      <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+      <div style={{ background: "hsl(0 0% 98%)", color: "#111", minHeight: "100vh", fontFamily: "'Inter Tight', -apple-system, sans-serif" }}>
+        {children}
+      </div>
+    </>
   );
 }
