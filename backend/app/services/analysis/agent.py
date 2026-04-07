@@ -35,7 +35,15 @@ def _cleanup_all_temps():
 
 @function_tool
 async def lookup_package_info(package_name: str, registry: str) -> str:
-    """Look up a package's metadata on npm or PyPI. Returns description, weekly downloads, repository URL, and latest version."""
+    """Look up a package's metadata on npm or PyPI. Returns description, weekly downloads, repository URL, and latest version. IMPORTANT: Only use for packages from package.json (npm) or requirements.txt/pyproject.toml (PyPI). Do NOT use for Go modules, Rust crates, or GitHub releases."""
+    # Reject names that look like Go modules, Rust crates, or GitHub repos
+    if "/" in package_name and registry == "npm" and not package_name.startswith("@"):
+        return json.dumps({"error": f"'{package_name}' looks like a Go module or GitHub path, not an npm package. Use lookup_github_repo instead.", "IMPORTANT": "Do NOT score this as suspicious. It is not an npm package."})
+    if "/" in package_name and registry == "pypi":
+        return json.dumps({"error": f"'{package_name}' looks like a GitHub path, not a PyPI package. Use lookup_github_repo instead.", "IMPORTANT": "Do NOT score this as suspicious. It is not a PyPI package."})
+    if any(package_name.startswith(p) for p in ("golang.org/", "google.golang.org/", "github.com/", "go.", "k8s.io/")):
+        return json.dumps({"error": f"'{package_name}' is a Go module, not an npm/PyPI package. Cannot look up. Score 0.0 for this dependency.", "IMPORTANT": "Do NOT penalize — this is a Go module."})
+
     if registry == "npm":
         client = NpmClient()
         try:
@@ -45,20 +53,21 @@ async def lookup_package_info(package_name: str, registry: str) -> str:
             dl_status = ""
             if downloads is not None:
                 if downloads < 100:
-                    dl_status = " *** EXTREMELY LOW — likely malicious or typosquat ***"
+                    dl_status = " *** EXTREMELY LOW — likely typosquat. VERIFY you have the correct package name before scoring. ***"
                 elif downloads < 1000:
-                    dl_status = " *** VERY LOW — suspicious ***"
+                    dl_status = " *** VERY LOW — verify this is the correct package name ***"
                 elif downloads < 10000:
                     dl_status = " (low)"
             return json.dumps({
-                "name": package_name, "registry": "npm",
+                "name": meta.name if hasattr(meta, 'name') and meta.name else package_name,
+                "registry": "npm",
                 "description": meta.description,
                 "weekly_downloads": f"{downloads:,}{dl_status}" if downloads else "unknown",
                 "repository": meta.repository_url or "NONE",
                 "latest_version": latest.version,
             })
         except Exception as e:
-            return json.dumps({"error": f"Package '{package_name}' not found on npm: {e}"})
+            return json.dumps({"error": f"Package '{package_name}' not found on npm: {e}", "IMPORTANT": "If the package doesn't exist on npm, you may have the wrong name or wrong registry. Do NOT score a non-existent package as suspicious."})
     elif registry == "pypi":
         client = PyPIClient()
         try:
@@ -71,8 +80,8 @@ async def lookup_package_info(package_name: str, registry: str) -> str:
                 "latest_version": latest.version,
             })
         except Exception as e:
-            return json.dumps({"error": f"Package '{package_name}' not found on PyPI: {e}"})
-    return json.dumps({"error": f"Unsupported registry: {registry}"})
+            return json.dumps({"error": f"Package '{package_name}' not found on PyPI: {e}", "IMPORTANT": "If the package doesn't exist on PyPI, you may have the wrong name or wrong registry. Do NOT score a non-existent package as suspicious."})
+    return json.dumps({"error": f"Unsupported registry: {registry}. Only 'npm' and 'pypi' are supported."})
 
 
 @function_tool
@@ -397,6 +406,16 @@ You need EVIDENCE, not suspicion. Specific code doing specific bad things.
 - Go modules you can't look up on npm/pypi → don't penalize, just note it. Score 0.0-1.0.
 - Process execution in build tools, test runners, CLIs is NORMAL. Score 0.0.
 - NEVER score above 4.0 without having used your tools to verify
+
+## PACKAGE NAME VERIFICATION — CRITICAL:
+When you look up a dependency and get extremely low downloads (<1K), STOP and ask yourself:
+1. **Did I use the exact package name from the diff?** Re-read the diff line. Copy the EXACT name.
+2. **Am I on the right registry?** Check what file the dependency appears in.
+3. **Could this be an internal/scoped package?** Names like @org/pkg or build tool plugins often look unfamiliar.
+4. **Is this a Rust/Go/other ecosystem package?** Those CANNOT be looked up on npm/PyPI.
+If a well-known project (vite, webpack, babel, etc.) adds a dependency, and your lookup shows <1K downloads,
+YOU ALMOST CERTAINLY HAVE THE WRONG PACKAGE NAME. Re-check before scoring.
+Popular projects do NOT depend on packages with 5 downloads. That's a sign YOU made an error, not them.
 
 ## IMPORTANT:
 - Use your tools. Don't guess. If a dependency changed, LOOK AT IT.
