@@ -62,9 +62,8 @@ export default function ResolverPage() {
     );
   }
 
-  const daily = scenarios.length > 0 ? scenarios[0] : null;
-  const open = scenarios.slice(1);
-  const dailyResult = daily ? completed[daily.id] : null;
+  const dailies = scenarios.slice(0, 2);
+  const open = scenarios.slice(2);
 
   return (
     <div className="space-y-8">
@@ -78,104 +77,64 @@ export default function ResolverPage() {
         </p>
       </div>
 
-      {/* Daily */}
-      {daily && (
+      {/* Daily Challenges */}
+      {dailies.length > 0 && (
         <div className="animate-fade-in animate-fade-in-delay-1">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[15px] font-medium text-foreground/60">Daily Challenge</h2>
+            <h2 className="text-[15px] font-medium text-foreground/60">Today's Challenges</h2>
           </div>
 
-          {dailyResult ? (
-            /* Completed state */
-            <div className="rounded-2xl glass p-6">
-              <div className="flex items-center gap-5">
-                <img
-                  src={PUZZLE_IMAGES[0]}
-                  alt=""
-                  className="shrink-0 rounded-xl object-cover"
-                  style={{ width: 80, height: 80 }}
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2.5 mb-1.5">
-                    <span className="font-semibold text-[20px] sm:text-[22px] text-foreground/90">
-                      {daily.package_name}
-                    </span>
-                    <RegistryBadge registry={daily.registry} />
+          <div className="space-y-3">
+            {dailies.map((d, idx) => {
+              const res = completed[d.id];
+              if (res) {
+                return (
+                  <div key={d.id} className="rounded-2xl glass p-5 sm:p-6">
+                    <div className="flex items-center gap-4 sm:gap-5">
+                      <img src={PUZZLE_IMAGES[idx]} alt="" className="shrink-0 rounded-xl object-cover" style={{ width: 64, height: 64 }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2.5 mb-1">
+                          <span className="font-semibold text-[16px] sm:text-[18px] text-foreground/90 truncate">{d.package_name}</span>
+                          <RegistryBadge registry={d.registry} />
+                        </div>
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className={cn("text-[12px] font-bold", res.is_correct ? "text-green-600" : "text-red-500")}>
+                            {res.is_correct ? "Correct" : "Incorrect"}
+                          </span>
+                          <span className="text-[12px] font-semibold text-foreground/50">{res.score > 0 ? "+" : ""}{res.score} pts</span>
+                          <span className={cn(
+                            "text-[10px] px-2 py-0.5 rounded-full font-medium",
+                            res.verdict === "safe" && "bg-green-50 text-green-600",
+                            res.verdict === "suspicious" && "bg-amber-50 text-amber-600",
+                            res.verdict === "malicious" && "bg-red-50 text-red-600",
+                          )}>
+                            {res.verdict}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[13px] text-muted-foreground/50 font-mono">
-                    {daily.version_from || "?"} &rarr; {daily.version_to || "?"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Result summary */}
-              <div className="mt-5 pt-5 border-t border-foreground/[0.06]">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className={cn(
-                    "text-[13px] font-bold",
-                    dailyResult.is_correct ? "text-green-600" : "text-red-500"
-                  )}>
-                    {dailyResult.is_correct ? "Correct" : "Incorrect"}
-                  </span>
-                  <span className="text-[13px] font-semibold text-foreground/70">
-                    {dailyResult.score > 0 ? "+" : ""}{dailyResult.score} pts
-                  </span>
-                  <span className={cn(
-                    "text-[11px] px-2 py-0.5 rounded-full font-medium",
-                    dailyResult.verdict === "safe" && "bg-green-50 text-green-600",
-                    dailyResult.verdict === "suspicious" && "bg-amber-50 text-amber-600",
-                    dailyResult.verdict === "malicious" && "bg-red-50 text-red-600",
-                  )}>
-                    You voted: {dailyResult.verdict}
-                  </span>
-                </div>
-                <p className="text-[13px] text-muted-foreground/60 leading-relaxed">
-                  {dailyResult.was_malicious
-                    ? dailyResult.attack_name || "This was a malicious package."
-                    : "This was a legitimate, safe update."}
-                </p>
-                {dailyResult.postmortem && (
-                  <p className="text-[12px] text-muted-foreground/40 mt-2 leading-relaxed">
-                    {dailyResult.postmortem}
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* Not yet played */
-            <Link
-              href={`/sentinel/inspect/${daily.id}`}
-              className="group block rounded-2xl glass glass-hover p-6"
-            >
-              <div className="flex items-center gap-5">
-                <img
-                  src={PUZZLE_IMAGES[0]}
-                  alt=""
-                  className="shrink-0 rounded-xl object-cover"
-                  style={{ width: 80, height: 80 }}
-                />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2.5 mb-1.5">
-                    <span className="font-semibold text-[20px] sm:text-[22px] text-foreground/90 group-hover:text-foreground transition-colors">
-                      {daily.package_name}
-                    </span>
-                    <RegistryBadge registry={daily.registry} />
+                );
+              }
+              return (
+                <Link key={d.id} href={`/sentinel/inspect/${d.id}`} className="group block rounded-2xl glass glass-hover p-5 sm:p-6">
+                  <div className="flex items-center gap-4 sm:gap-5">
+                    <img src={PUZZLE_IMAGES[idx]} alt="" className="shrink-0 rounded-xl object-cover" style={{ width: 64, height: 64 }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5 mb-1">
+                        <span className="font-semibold text-[16px] sm:text-[18px] text-foreground/90 group-hover:text-foreground transition-colors truncate">{d.package_name}</span>
+                        <RegistryBadge registry={d.registry} />
+                      </div>
+                      <p className="text-[13px] text-muted-foreground/50 font-mono">{d.version_from || "?"} &rarr; {d.version_to || "?"}</p>
+                    </div>
+                    <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors shrink-0">
+                      Play
+                    </div>
                   </div>
-                  <p className="text-[13px] text-muted-foreground/50 font-mono">
-                    {daily.version_from || "?"} &rarr; {daily.version_to || "?"}
-                  </p>
-                  {daily.total_inspections > 0 && (
-                    <p className="text-[11px] text-muted-foreground/40 mt-2">
-                      {daily.total_inspections} inspections completed
-                    </p>
-                  )}
-                </div>
-                <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors shrink-0">
-                  Play
-                </div>
-              </div>
-            </Link>
-          )}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
 

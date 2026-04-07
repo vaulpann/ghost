@@ -226,30 +226,85 @@ export default function InspectPage() {
 
   // === RESULTS ===
   if (result) {
+    const shareText = result.is_correct
+      ? `I correctly identified ${scenario.package_name} on Ghost Resolver. Can you spot the supply chain attack?`
+      : `I got tricked by ${scenario.package_name} on Ghost Resolver. Can you spot the supply chain attack?`;
+    const shareUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent("https://ghost.validia.ai")}`;
+
     return (
-      <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
-          <h2 style={{ fontSize: isMobile ? 36 : 48, fontWeight: 800, color: result.is_correct ? "#16a34a" : "#dc2626", marginBottom: 4 }}>
-            {result.is_correct ? "Correct" : "Wrong"}
+      <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center", padding: isMobile ? 16 : 20 }}>
+        <div style={{ maxWidth: 440, width: "100%", textAlign: "center" }}>
+          {/* Verdict */}
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "6px 16px", borderRadius: 100, marginBottom: 20,
+            background: result.is_correct ? "#f0fdf4" : "#fef2f2",
+            border: `1px solid ${result.is_correct ? "#bbf7d0" : "#fecaca"}`,
+          }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: result.is_correct ? "#16a34a" : "#dc2626",
+            }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: result.is_correct ? "#16a34a" : "#dc2626" }}>
+              {result.is_correct ? "Correct" : "Incorrect"}
+            </span>
+          </div>
+
+          {/* Package name */}
+          <h2 style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: "#111", margin: "0 0 4px", lineHeight: 1.1 }}>
+            {scenario.package_name}
           </h2>
-          <p style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#111", marginBottom: 16 }}>
+          <p style={{ fontSize: 14, color: "#bbb", fontFamily: "monospace", marginBottom: 24 }}>
+            {scenario.version_from} → {scenario.version_to}
+          </p>
+
+          {/* Score */}
+          <p style={{ fontSize: 15, fontWeight: 600, color: "#555", marginBottom: 24 }}>
             {result.score > 0 ? "+" : ""}{result.score} points
           </p>
-          <p style={{ fontSize: isMobile ? 14 : 15, color: "#666", lineHeight: 1.7, marginBottom: 24 }}>
-            {result.was_malicious ? result.attack_name : "This was a legitimate, safe update."}
-          </p>
-          {result.postmortem && (
-            <div style={{ textAlign: "left", background: "#fff", borderRadius: 16, padding: isMobile ? 16 : 24, marginBottom: 24, border: "1px solid #eee" }}>
-              <p style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8, fontWeight: 600 }}>What happened</p>
-              <p style={{ fontSize: 14, color: "#444", lineHeight: 1.8 }}>{result.postmortem}</p>
-            </div>
-          )}
-          <Link href="/" style={{
-            display: "inline-block", padding: isMobile ? "12px 32px" : "14px 40px", background: "#111", color: "#fff",
-            borderRadius: 10, textDecoration: "none", fontSize: 15, fontWeight: 600,
+
+          {/* What happened */}
+          <div style={{
+            textAlign: "left", borderRadius: 14, padding: isMobile ? 16 : 20, marginBottom: 24,
+            background: "#fafafa", border: "1px solid #f0f0f0",
           }}>
-            Next Package
-          </Link>
+            <p style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8, fontWeight: 600 }}>
+              {result.was_malicious ? "Attack Details" : "Verdict"}
+            </p>
+            <p style={{ fontSize: 14, color: "#444", lineHeight: 1.75, margin: 0 }}>
+              {result.was_malicious
+                ? result.attack_name || "This was a malicious package."
+                : "This was a legitimate, safe update. No threats detected."}
+            </p>
+            {result.postmortem && (
+              <p style={{ fontSize: 13, color: "#888", lineHeight: 1.75, marginTop: 10, marginBottom: 0 }}>
+                {result.postmortem}
+              </p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <Link href="/" style={{
+              flex: 1, maxWidth: 180, padding: "13px 0", background: "#111", color: "#fff",
+              borderRadius: 10, textDecoration: "none", fontSize: 14, fontWeight: 600,
+              textAlign: "center",
+            }}>
+              Next
+            </Link>
+            <a href={shareUrl} target="_blank" rel="noopener noreferrer" style={{
+              flex: 1, maxWidth: 180, padding: "13px 0",
+              background: "#fff", color: "#111",
+              borderRadius: 10, textDecoration: "none", fontSize: 14, fontWeight: 600,
+              border: "1px solid #e0e0e0", textAlign: "center",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}>
+              <svg viewBox="0 0 24 24" style={{ width: 14, height: 14, fill: "currentColor" }}>
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              Share
+            </a>
+          </div>
         </div>
       </div>
     );
