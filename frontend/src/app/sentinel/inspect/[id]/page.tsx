@@ -12,13 +12,15 @@ function getSessionId(): string {
   return id;
 }
 
+const ACCENT = "#1e3a5f"; // dark blue accent for all evidence
+
 const EVIDENCE = [
-  { key: "identity", label: "Identity", img: "/sentinel-identity.jpg", color: "#6366f1" },
-  { key: "timing", label: "Timeline", img: "/sentinel-timeline.jpg", color: "#0ea5e9" },
-  { key: "shape", label: "Structure", img: "/sentinel-structure.jpg", color: "#10b981" },
-  { key: "behavior", label: "Behavior", img: "/sentinel-behavior.jpg", color: "#f59e0b" },
-  { key: "flow", label: "Data Flow", img: "/sentinel-dataflow.jpg", color: "#ef4444" },
-  { key: "context", label: "Context", img: "/sentinel-context.jpg", color: "#8b5cf6" },
+  { key: "identity", label: "Identity", img: "/sentinel-identity.jpg", color: ACCENT },
+  { key: "timing", label: "Timeline", img: "/sentinel-timeline.jpg", color: ACCENT },
+  { key: "shape", label: "Structure", img: "/sentinel-structure.jpg", color: ACCENT },
+  { key: "behavior", label: "Behavior", img: "/sentinel-behavior.jpg", color: ACCENT },
+  { key: "flow", label: "Data Flow", img: "/sentinel-dataflow.jpg", color: ACCENT },
+  { key: "context", label: "Context", img: "/sentinel-context.jpg", color: ACCENT },
 ];
 
 // No grid — tiles are positioned in a rotating circle
