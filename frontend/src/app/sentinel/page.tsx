@@ -3,52 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getSentinelScenarios, getSentinelPlayer } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { RegistryBadge } from "@/components/analysis/registry-badge";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
   let id = localStorage.getItem("ghost-session-id");
   if (!id) { id = crypto.randomUUID(); localStorage.setItem("ghost-session-id", id); }
   return id;
-}
-
-function ScenarioRow({ s }: { s: any }) {
-  return (
-    <Link
-      href={`/sentinel/inspect/${s.id}`}
-      style={{
-        display: "flex", alignItems: "center", gap: 14,
-        padding: "14px 0",
-        borderBottom: "1px solid #f0f0f0",
-        textDecoration: "none", color: "inherit",
-        fontFamily: "'Inter Tight', -apple-system, sans-serif",
-      }}
-    >
-      <div style={{
-        width: 36, height: 36, borderRadius: 8,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 14, fontWeight: 700,
-        background: s.difficulty === "tutorial" ? "#e8f5e9" : s.difficulty === "easy" ? "#e3f2fd" : s.difficulty === "medium" ? "#fff8e1" : s.difficulty === "hard" ? "#fff3e0" : "#fce4ec",
-        color: s.difficulty === "tutorial" ? "#2e7d32" : s.difficulty === "easy" ? "#1565c0" : s.difficulty === "medium" ? "#f57f17" : s.difficulty === "hard" ? "#e65100" : "#c62828",
-      }}>
-        {s.difficulty[0].toUpperCase()}
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "#1a1a2e" }}>
-          {s.package_name}
-          <span style={{ fontSize: 12, fontWeight: 400, color: "#aaa", marginLeft: 6 }}>{s.registry}</span>
-        </div>
-        <div style={{ fontSize: 13, color: "#888", fontFamily: "monospace", marginTop: 2 }}>
-          {s.version_from || "?"} → {s.version_to || "?"}
-        </div>
-      </div>
-      <div style={{ fontSize: 12, color: "#bbb" }}>
-        {s.total_inspections > 0 ? `${s.total_inspections} played` : "New"}
-      </div>
-      <svg width="8" height="14" viewBox="0 0 8 14" fill="none" style={{ opacity: 0.3 }}>
-        <path d="M1 1l6 6-6 6" stroke="#1a1a2e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </Link>
-  );
 }
 
 export default function SentinelPage() {
@@ -71,112 +33,139 @@ export default function SentinelPage() {
     load();
   }, []);
 
-  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "#999" }}>Loading...</p></div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-muted-foreground/50 text-sm">Loading...</div>
+      </div>
+    );
+  }
 
   const daily = scenarios.length > 0 ? scenarios[0] : null;
   const open = scenarios.slice(1);
 
   return (
-    <div style={{ fontFamily: "'Inter Tight', -apple-system, sans-serif" }}>
+    <div className="space-y-8">
       {/* Header */}
-      <div style={{ borderBottom: "1px solid #eee", padding: "24px 0 20px", marginBottom: 0 }}>
-        <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 20px" }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5, margin: 0, color: "#111" }}>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-in">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">
             Sentinel
           </h1>
-          <p style={{ fontSize: 14, color: "#888", marginTop: 4 }}>
+          <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
             Inspect packages. Spot supply chain threats.
           </p>
         </div>
-      </div>
-
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 20px" }}>
-        {/* Stats */}
         {player && player.total_inspections > 0 && (
-          <div style={{ display: "flex", gap: 32, padding: "20px 0", borderBottom: "1px solid #f0f0f0" }}>
+          <div className="flex gap-5 text-right">
             {[
               { label: "Score", value: player.total_score },
               { label: "Streak", value: player.streak },
               { label: "Detection", value: player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—" },
-              { label: "Inspected", value: player.total_inspections },
             ].map((s) => (
               <div key={s.label}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#111" }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>{s.label}</div>
+                <p className="text-lg font-semibold tabular-nums text-foreground/80">{s.value}</p>
+                <p className="text-[10px] text-muted-foreground/40 uppercase tracking-wider">{s.label}</p>
               </div>
             ))}
           </div>
         )}
-
-        {/* Daily */}
-        {daily && (
-          <div style={{ marginTop: 28 }}>
-            <h2 style={{ fontSize: 13, fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 12 }}>
-              Daily
-            </h2>
-            <Link
-              href={`/sentinel/inspect/${daily.id}`}
-              style={{
-                display: "block", textDecoration: "none", color: "inherit",
-                border: "1px solid #e8e8e8", borderRadius: 16, padding: 20,
-                background: "#fff",
-                transition: "border-color 0.15s, box-shadow 0.15s",
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.borderColor = "#ccc"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.04)"; }}
-              onMouseOut={(e) => { e.currentTarget.style.borderColor = "#e8e8e8"; e.currentTarget.style.boxShadow = "none"; }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "#111" }}>
-                    {daily.package_name}
-                    <span style={{ fontSize: 13, fontWeight: 400, color: "#aaa", marginLeft: 8 }}>{daily.registry}</span>
-                  </div>
-                  <div style={{ fontSize: 14, color: "#888", fontFamily: "monospace", marginTop: 4 }}>
-                    {daily.version_from || "?"} → {daily.version_to || "?"}
-                  </div>
-                </div>
-                <div style={{
-                  padding: "8px 16px", borderRadius: 8,
-                  background: "#1e3a5f", color: "#fff",
-                  fontSize: 13, fontWeight: 600,
-                }}>
-                  Play
-                </div>
-              </div>
-              {daily.total_inspections > 0 && (
-                <div style={{ fontSize: 12, color: "#bbb", marginTop: 10 }}>
-                  {daily.total_inspections} inspections completed
-                </div>
-              )}
-            </Link>
-          </div>
-        )}
-
-        {/* Open Puzzles */}
-        {open.length > 0 && (
-          <div style={{ marginTop: 36 }}>
-            <h2 style={{ fontSize: 13, fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 8 }}>
-              Open Puzzles
-            </h2>
-            <div>
-              {open.map((s) => (
-                <ScenarioRow key={s.id} s={s} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {scenarios.length === 0 && (
-          <p style={{ textAlign: "center", padding: 60, color: "#bbb" }}>No scenarios available.</p>
-        )}
-
-        {/* Footer */}
-        <div style={{ textAlign: "center", marginTop: 48, paddingTop: 20, paddingBottom: 20, borderTop: "1px solid #f0f0f0" }}>
-          <p style={{ fontSize: 11, color: "#ccc" }}>
-            Powered by <a href="https://ghost.validia.ai" style={{ color: "#aaa", textDecoration: "underline" }}>Ghost</a> · Validia
-          </p>
-        </div>
       </div>
+
+      {/* Daily */}
+      {daily && (
+        <div className="animate-fade-in animate-fade-in-delay-1">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[15px] font-medium text-foreground/60">Daily Challenge</h2>
+          </div>
+
+          <Link
+            href={`/sentinel/inspect/${daily.id}`}
+            className="group block rounded-2xl glass glass-hover p-6"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <span className="font-semibold text-[18px] text-foreground/90 group-hover:text-foreground transition-colors">
+                    {daily.package_name}
+                  </span>
+                  <RegistryBadge registry={daily.registry} />
+                </div>
+                <p className="text-[13px] text-muted-foreground/50 font-mono">
+                  {daily.version_from || "?"} &rarr; {daily.version_to || "?"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors">
+                Play
+              </div>
+            </div>
+            {daily.total_inspections > 0 && (
+              <p className="text-[11px] text-muted-foreground/40 mt-3">
+                {daily.total_inspections} inspections completed
+              </p>
+            )}
+          </Link>
+        </div>
+      )}
+
+      {/* Open Puzzles */}
+      {open.length > 0 && (
+        <div className="animate-fade-in animate-fade-in-delay-2">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[15px] font-medium text-foreground/60">Open Puzzles</h2>
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums">
+              {open.length} available
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {open.map((s, i) => (
+              <Link
+                key={s.id}
+                href={`/sentinel/inspect/${s.id}`}
+                className="group flex items-center gap-4 rounded-xl glass glass-hover p-4 animate-fade-in"
+                style={{ animationDelay: `${i * 0.03}s` }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 sm:gap-2.5 mb-1 sm:mb-1.5 flex-wrap">
+                    <span className="font-medium text-[13px] text-foreground/80 group-hover:text-foreground transition-colors">
+                      {s.package_name}
+                    </span>
+                    <RegistryBadge registry={s.registry} />
+                    <span className="text-[11px] text-muted-foreground/50 font-mono">
+                      {s.version_from || "?"} &rarr; {s.version_to || "?"}
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-muted-foreground/40">
+                    {s.difficulty.charAt(0).toUpperCase() + s.difficulty.slice(1)} difficulty
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  {s.total_inspections > 0 ? (
+                    <span className="text-[11px] text-muted-foreground/40 tabular-nums">
+                      {s.total_inspections} played
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-[#1e3a5f] font-medium">New</span>
+                  )}
+                  <span className="text-[11px] text-muted-foreground/20 w-14 text-right">
+                    &rarr;
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {scenarios.length === 0 && (
+        <div className="rounded-2xl glass p-12 text-center">
+          <div className="text-muted-foreground/30 text-sm">
+            No puzzles available yet.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
