@@ -12,10 +12,22 @@ function getSessionId(): string {
   return id;
 }
 
+function getTodayEST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
 function getCompleted(): Record<string, any> {
   if (typeof window === "undefined") return {};
-  try { return JSON.parse(localStorage.getItem("ghost-completed") || "{}"); }
-  catch { return {}; }
+  try {
+    const raw = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+    const today = getTodayEST();
+    if (raw._date !== today) {
+      const fresh = { _date: today };
+      localStorage.setItem("ghost-completed", JSON.stringify(fresh));
+      return fresh;
+    }
+    return raw;
+  } catch { return { _date: getTodayEST() }; }
 }
 
 const ACCENT = "#1e3a5f";
@@ -302,7 +314,7 @@ export default function InspectPage() {
       setResult(res);
       // Save completion to localStorage so the list page can show results
       try {
-        const completed = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+        const completed = getCompleted();
         completed[scenario.id] = { verdict, confidence, ...res };
         localStorage.setItem("ghost-completed", JSON.stringify(completed));
       } catch {}
@@ -316,7 +328,7 @@ export default function InspectPage() {
           // No saved result — fake a minimal one so we don't get stuck
           setResult({ is_correct: false, score: 0, was_malicious: false, verdict, postmortem: "You already submitted a verdict for this puzzle." });
           try {
-            const completed = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+            const completed = getCompleted();
             completed[scenario.id] = { verdict, confidence, is_correct: false, score: 0, was_malicious: false, postmortem: "You already submitted a verdict for this puzzle." };
             localStorage.setItem("ghost-completed", JSON.stringify(completed));
           } catch {}

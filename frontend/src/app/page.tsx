@@ -13,10 +13,62 @@ function getSessionId(): string {
   return id;
 }
 
+/** Get today's date string in EST (America/New_York) as YYYY-MM-DD */
+function getTodayEST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+/** Get completed challenges, auto-expiring if date has changed */
 function getCompleted(): Record<string, any> {
   if (typeof window === "undefined") return {};
-  try { return JSON.parse(localStorage.getItem("ghost-completed") || "{}"); }
-  catch { return {}; }
+  try {
+    const raw = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+    const today = getTodayEST();
+    // If stored date doesn't match today, clear completions
+    if (raw._date !== today) {
+      const fresh = { _date: today };
+      localStorage.setItem("ghost-completed", JSON.stringify(fresh));
+      return fresh;
+    }
+    return raw;
+  } catch {
+    return { _date: getTodayEST() };
+  }
+}
+
+/**
+ * Pick 4 daily challenges from the scenario pool based on today's date.
+ * Uses a seeded shuffle so everyone sees the same 4 on a given day,
+ * and they rotate at midnight EST.
+ */
+function getDailyChallenges(scenarios: any[]): { dailies: any[]; open: any[] } {
+  if (scenarios.length <= 4) return { dailies: scenarios, open: [] };
+
+  const today = getTodayEST();
+  // Simple hash from date string to get a seed
+  let seed = 0;
+  for (let i = 0; i < today.length; i++) seed = today.charCodeAt(i) + ((seed << 5) - seed);
+
+  // Seeded shuffle (Fisher-Yates with deterministic pseudo-random)
+  const indices = scenarios.map((_, i) => i);
+  const mulberry32 = (a: number) => () => {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const rng = mulberry32(seed);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  const dailyIndices = indices.slice(0, 4);
+  const openIndices = indices.slice(4);
+  return {
+    dailies: dailyIndices.map(i => scenarios[i]),
+    open: openIndices.map(i => scenarios[i]),
+  };
 }
 
 const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg`);
@@ -51,8 +103,7 @@ export default function ResolverPage() {
     );
   }
 
-  const dailies = scenarios.slice(0, 4);
-  const open = scenarios.slice(4);
+  const { dailies, open } = getDailyChallenges(scenarios);
 
   return (
     <div className="space-y-8">
