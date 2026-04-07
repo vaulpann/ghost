@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.sentinel import SentinelPlayer, SentinelScenario, SentinelVerdict
 from app.schemas.sentinel import (
+    CompletionEntry,
+    CompletionsResponse,
     LeaderboardEntry,
     PlayerStatsResponse,
     ScenarioListResponse,
@@ -284,6 +286,28 @@ async def get_player_stats(session_id: str, db: AsyncSession = Depends(get_db)):
         false_positive_rate=player.false_positive_rate,
         vote_weight=player.vote_weight,
     )
+
+
+@router.get("/sentinel/completions/{session_id}", response_model=CompletionsResponse)
+async def get_completions(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Return all verdicts for a session as a map of scenario_id -> result."""
+    result = await db.execute(
+        select(SentinelVerdict, SentinelScenario)
+        .join(SentinelScenario, SentinelVerdict.scenario_id == SentinelScenario.id)
+        .where(SentinelVerdict.session_id == session_id)
+    )
+    rows = result.all()
+    completions = {}
+    for verdict, scenario in rows:
+        completions[str(scenario.id)] = CompletionEntry(
+            verdict=verdict.verdict,
+            is_correct=verdict.is_correct,
+            score=verdict.score,
+            was_malicious=scenario.is_malicious,
+            attack_name=scenario.attack_name if scenario.is_malicious else None,
+            postmortem=scenario.postmortem,
+        )
+    return CompletionsResponse(completions=completions)
 
 
 @router.get("/sentinel/stats", response_model=SentinelStatsResponse)

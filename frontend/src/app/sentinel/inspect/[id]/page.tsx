@@ -3,31 +3,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { getSentinelScenario, submitVerdict } from "@/lib/api";
+import { getSentinelScenario, getSentinelCompletions, submitVerdict } from "@/lib/api";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
   let id = localStorage.getItem("ghost-session-id");
   if (!id) { id = crypto.randomUUID(); localStorage.setItem("ghost-session-id", id); }
   return id;
-}
-
-function getTodayEST(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-}
-
-function getCompleted(): Record<string, any> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
-    const today = getTodayEST();
-    if (raw._date !== today) {
-      const fresh = { _date: today };
-      localStorage.setItem("ghost-completed", JSON.stringify(fresh));
-      return fresh;
-    }
-    return raw;
-  } catch { return { _date: getTodayEST() }; }
 }
 
 const ACCENT = "#1e3a5f";
@@ -273,21 +255,26 @@ export default function InspectPage() {
   }, []);
 
   useEffect(() => {
-    // If already completed, show saved result immediately
-    const allCompleted = getCompleted();
-    const saved = allCompleted[params.id as string];
-    if (saved) setResult(saved);
-
-    // Auto-show help if user hasn't completed any challenges yet
-    if (Object.keys(allCompleted).length === 0) {
-      setShowHelp(true);
-    }
-
     async function load() {
       try {
-        const data = await getSentinelScenario(params.id as string, getSessionId());
-        setScenario(data);
+        const sessionId = getSessionId();
+        const [scenarioData, compData] = await Promise.all([
+          getSentinelScenario(params.id as string, sessionId),
+          getSentinelCompletions(sessionId).catch(() => ({ completions: {} as Record<string, any> })),
+        ]);
+        setScenario(scenarioData);
         startTime.current = Date.now();
+
+        // If already completed, show result from backend
+        const saved = compData.completions[params.id as string];
+        if (saved) {
+          setResult(saved);
+        }
+
+        // Auto-show help if user hasn't completed any challenges yet
+        if (Object.keys(compData.completions).length === 0 && !saved) {
+          setShowHelp(true);
+        }
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     }
@@ -312,26 +299,8 @@ export default function InspectPage() {
         tools_used: Array.from(viewed),
       });
       setResult(res);
-      // Save completion to localStorage so the list page can show results
-      try {
-        const completed = getCompleted();
-        completed[scenario.id] = { verdict, confidence, ...res };
-        localStorage.setItem("ghost-completed", JSON.stringify(completed));
-      } catch {}
     } catch (e: any) {
-      // If 409 (old backend), show saved result or redirect home
-      if (e.message?.includes("409")) {
-        const saved = getCompleted()[scenario.id];
-        if (saved) {
-          setResult(saved);
-        } else {
-          // No saved result available — just send them back
-          window.location.href = "/";
-          return;
-        }
-      } else {
-        console.error("Submit failed:", e);
-      }
+      console.error("Submit failed:", e);
     } finally { setSubmitting(false); }
   };
 

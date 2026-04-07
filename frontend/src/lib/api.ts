@@ -101,3 +101,6 @@ export const getSentinelPlayer = (sessionId: string) =>
 export const getSentinelStats = () =>
   fetchAPI<any>("/api/v1/sentinel/stats");
 
+export const getSentinelCompletions = (sessionId: string) =>
+  fetchAPI<{ completions: Record<string, any> }>(`/api/v1/sentinel/completions/${sessionId}`);
+

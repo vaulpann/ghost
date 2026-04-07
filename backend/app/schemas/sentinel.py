@@ -86,6 +86,19 @@ class LeaderboardEntry(BaseModel):
     best_streak: int
 
 
+class CompletionEntry(BaseModel):
+    verdict: str
+    is_correct: bool
+    score: int
+    was_malicious: bool
+    attack_name: str | None = None
+    postmortem: str | None = None
+
+
+class CompletionsResponse(BaseModel):
+    completions: dict[str, CompletionEntry]  # scenario_id -> result
+
+
 class SentinelStatsResponse(BaseModel):
     total_scenarios: int
     total_inspections: int

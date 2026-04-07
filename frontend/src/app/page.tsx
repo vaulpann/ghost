@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getSentinelScenarios, getSentinelPlayer } from "@/lib/api";
+import { getSentinelScenarios, getSentinelCompletions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 
@@ -20,7 +20,7 @@ function getTodayEST(): string {
 
 /** Day number since April 7, 2026 (Day #0) */
 function getDayNumber(): number {
-  const start = new Date("2026-04-07T00:00:00-04:00"); // midnight EST
+  const start = new Date("2026-04-07T00:00:00-04:00");
   const todayStr = getTodayEST();
   const [y, m, d] = todayStr.split("-").map(Number);
   const today = new Date(y, m - 1, d);
@@ -28,38 +28,17 @@ function getDayNumber(): number {
   return Math.floor((today.getTime() - startLocal.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-/** Get completed challenges, auto-expiring if date has changed */
-function getCompleted(): Record<string, any> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
-    const today = getTodayEST();
-    // If stored date doesn't match today, clear completions
-    if (raw._date !== today) {
-      const fresh = { _date: today };
-      localStorage.setItem("ghost-completed", JSON.stringify(fresh));
-      return fresh;
-    }
-    return raw;
-  } catch {
-    return { _date: getTodayEST() };
-  }
-}
-
 /**
  * Pick 4 daily challenges from the scenario pool based on today's date.
- * Uses a seeded shuffle so everyone sees the same 4 on a given day,
- * and they rotate at midnight EST.
+ * Uses a seeded shuffle so everyone sees the same 4 on a given day.
  */
 function getDailyChallenges(scenarios: any[]): { dailies: any[]; open: any[] } {
   if (scenarios.length <= 4) return { dailies: scenarios, open: [] };
 
   const today = getTodayEST();
-  // Simple hash from date string to get a seed
   let seed = 0;
   for (let i = 0; i < today.length; i++) seed = today.charCodeAt(i) + ((seed << 5) - seed);
 
-  // Seeded shuffle (Fisher-Yates with deterministic pseudo-random)
   const indices = scenarios.map((_, i) => i);
   const mulberry32 = (a: number) => () => {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -73,11 +52,9 @@ function getDailyChallenges(scenarios: any[]): { dailies: any[]; open: any[] } {
     [indices[i], indices[j]] = [indices[j], indices[i]];
   }
 
-  const dailyIndices = indices.slice(0, 4);
-  const openIndices = indices.slice(4);
   return {
-    dailies: dailyIndices.map(i => scenarios[i]),
-    open: openIndices.map(i => scenarios[i]),
+    dailies: indices.slice(0, 4).map(i => scenarios[i]),
+    open: indices.slice(4).map(i => scenarios[i]),
   };
 }
 
@@ -85,20 +62,18 @@ const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg
 
 export default function ResolverPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
-  const [player, setPlayer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [completed, setCompleted] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    setCompleted(getCompleted());
     async function load() {
       try {
-        const [scenData, playerData] = await Promise.all([
+        const [scenData, compData] = await Promise.all([
           getSentinelScenarios("per_page=50"),
-          getSentinelPlayer(getSessionId()).catch(() => null),
+          getSentinelCompletions(getSessionId()).catch(() => ({ completions: {} })),
         ]);
         setScenarios(scenData.items);
-        setPlayer(playerData);
+        setCompleted(compData.completions);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     }
