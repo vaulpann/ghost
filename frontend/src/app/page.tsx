@@ -18,6 +18,16 @@ function getTodayEST(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
+/** Day number since April 7, 2026 (Day #0) */
+function getDayNumber(): number {
+  const start = new Date("2026-04-07T00:00:00-04:00"); // midnight EST
+  const todayStr = getTodayEST();
+  const [y, m, d] = todayStr.split("-").map(Number);
+  const today = new Date(y, m - 1, d);
+  const startLocal = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  return Math.floor((today.getTime() - startLocal.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 /** Get completed challenges, auto-expiring if date has changed */
 function getCompleted(): Record<string, any> {
   if (typeof window === "undefined") return {};
@@ -109,11 +119,14 @@ export default function ResolverPage() {
     <div className="space-y-8 max-w-3xl mx-auto">
       {/* Header */}
       <div className="animate-fade-in">
+        <p className="text-[12px] font-semibold text-muted-foreground/40 uppercase tracking-widest mb-2">
+          Day #{getDayNumber()}
+        </p>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground/90">
           Can you spot the supply chain attack?
         </h1>
         <p className="text-[13px] sm:text-[14px] text-muted-foreground/50 mt-2 max-w-lg leading-relaxed">
-          Real packages. Real diffs. Review the evidence and decide — is this update safe, or has it been compromised?
+          Real packages. Real diffs. Review the evidence and decide: is this update safe, or has it been compromised?
         </p>
       </div>
 
