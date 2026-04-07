@@ -106,7 +106,7 @@ export default function ResolverPage() {
   const { dailies, open } = getDailyChallenges(scenarios);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-3xl mx-auto">
       {/* Header */}
       <div className="animate-fade-in">
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground/90">
@@ -124,7 +124,7 @@ export default function ResolverPage() {
             <h2 className="text-[15px] font-medium text-foreground/60">Today's Challenges</h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {dailies.map((d, idx) => {
               const res = completed[d.id];
               if (res) {
