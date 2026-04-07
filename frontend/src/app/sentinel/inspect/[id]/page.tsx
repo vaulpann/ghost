@@ -12,6 +12,12 @@ function getSessionId(): string {
   return id;
 }
 
+function getCompleted(): Record<string, any> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem("ghost-completed") || "{}"); }
+  catch { return {}; }
+}
+
 const ACCENT = "#1e3a5f";
 
 const EVIDENCE = [
@@ -152,6 +158,10 @@ export default function InspectPage() {
   }, []);
 
   useEffect(() => {
+    // If already completed, show saved result immediately
+    const saved = getCompleted()[params.id as string];
+    if (saved) setResult(saved);
+
     async function load() {
       try {
         const data = await getSentinelScenario(params.id as string, getSessionId());
@@ -188,7 +198,23 @@ export default function InspectPage() {
         localStorage.setItem("ghost-completed", JSON.stringify(completed));
       } catch {}
     } catch (e: any) {
-      console.error("Submit failed:", e);
+      // If 409 (already submitted), show result from localStorage or a fallback
+      if (e.message?.includes("409")) {
+        const saved = getCompleted()[scenario.id];
+        if (saved) {
+          setResult(saved);
+        } else {
+          // No saved result — fake a minimal one so we don't get stuck
+          setResult({ is_correct: false, score: 0, was_malicious: false, verdict, postmortem: "You already submitted a verdict for this puzzle." });
+          try {
+            const completed = JSON.parse(localStorage.getItem("ghost-completed") || "{}");
+            completed[scenario.id] = { verdict, confidence, is_correct: false, score: 0, was_malicious: false, postmortem: "You already submitted a verdict for this puzzle." };
+            localStorage.setItem("ghost-completed", JSON.stringify(completed));
+          } catch {}
+        }
+      } else {
+        console.error("Submit failed:", e);
+      }
     } finally { setSubmitting(false); }
   };
 
