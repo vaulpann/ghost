@@ -13,23 +13,20 @@ function getSessionId(): string {
   return id;
 }
 
-// Small abstract icons per registry — deterministic based on package name
-function PuzzleIcon({ name, registry }: { name: string; registry: string }) {
+const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg`);
+
+function PuzzleImage({ name }: { name: string }) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  const hue = Math.abs(hash % 360);
-  const bg = `hsl(${hue}, 25%, 92%)`;
-  const fg = `hsl(${hue}, 40%, 45%)`;
+  const idx = Math.abs(hash) % PUZZLE_IMAGES.length;
 
   return (
-    <div style={{
-      width: 40, height: 40, borderRadius: 10, background: bg,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: 16, fontWeight: 700, color: fg, flexShrink: 0,
-      fontFamily: "monospace",
-    }}>
-      {name.slice(0, 2).toUpperCase()}
-    </div>
+    <img
+      src={PUZZLE_IMAGES[idx]}
+      alt=""
+      className="shrink-0 rounded-lg object-cover"
+      style={{ width: 40, height: 40 }}
+    />
   );
 }
 
@@ -104,7 +101,7 @@ export default function ResolverPage() {
             className="group block rounded-2xl glass glass-hover p-6"
           >
             <div className="flex items-center gap-4">
-              <PuzzleIcon name={daily.package_name} registry={daily.registry} />
+              <PuzzleImage name={daily.package_name} />
               <div className="flex-1">
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <span className="font-semibold text-[18px] text-foreground/90 group-hover:text-foreground transition-colors">
@@ -147,7 +144,7 @@ export default function ResolverPage() {
                 className="group flex items-center gap-4 rounded-xl glass glass-hover p-4 animate-fade-in"
                 style={{ animationDelay: `${i * 0.03}s` }}
               >
-                <PuzzleIcon name={s.package_name} registry={s.registry} />
+                <PuzzleImage name={s.package_name} />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 sm:gap-2.5 mb-1 sm:mb-1.5 flex-wrap">
