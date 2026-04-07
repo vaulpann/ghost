@@ -15,14 +15,10 @@ function getSessionId(): string {
 
 const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg`);
 
-function PuzzleImage({ name }: { name: string }) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  const idx = Math.abs(hash) % PUZZLE_IMAGES.length;
-
+function PuzzleImage({ index }: { index: number }) {
   return (
     <img
-      src={PUZZLE_IMAGES[idx]}
+      src={PUZZLE_IMAGES[index % PUZZLE_IMAGES.length]}
       alt=""
       className="shrink-0 rounded-lg object-cover"
       style={{ width: 40, height: 40 }}
@@ -101,7 +97,7 @@ export default function ResolverPage() {
             className="group block rounded-2xl glass glass-hover p-6"
           >
             <div className="flex items-center gap-4">
-              <PuzzleImage name={daily.package_name} />
+              <PuzzleImage index={0} />
               <div className="flex-1">
                 <div className="flex items-center gap-2.5 mb-1.5">
                   <span className="font-semibold text-[18px] text-foreground/90 group-hover:text-foreground transition-colors">
@@ -144,7 +140,7 @@ export default function ResolverPage() {
                 className="group flex items-center gap-4 rounded-xl glass glass-hover p-4 animate-fade-in"
                 style={{ animationDelay: `${i * 0.03}s` }}
               >
-                <PuzzleImage name={s.package_name} />
+                <PuzzleImage index={i + 1} />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 sm:gap-2.5 mb-1 sm:mb-1.5 flex-wrap">
