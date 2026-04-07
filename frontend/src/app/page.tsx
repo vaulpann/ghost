@@ -119,8 +119,8 @@ export default function ResolverPage() {
     <div className="space-y-8 max-w-3xl mx-auto">
       {/* Header */}
       <div className="animate-fade-in">
-        <p className="text-[12px] font-semibold text-muted-foreground/40 uppercase tracking-widest mb-2">
-          Day #{getDayNumber()}
+        <p className="text-[12px] font-semibold text-muted-foreground/40 tracking-widest mb-2">
+          <span className="uppercase">Day #{getDayNumber()}</span>, {new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", month: "long", day: "numeric", year: "numeric" })}
         </p>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground/90">
           Can you spot the supply chain attack?
