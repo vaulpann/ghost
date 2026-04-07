@@ -21,17 +21,6 @@ function getCompleted(): Record<string, any> {
 
 const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg`);
 
-function PuzzleImage({ index }: { index: number }) {
-  return (
-    <img
-      src={PUZZLE_IMAGES[index % PUZZLE_IMAGES.length]}
-      alt=""
-      className="shrink-0 rounded-lg object-cover"
-      style={{ width: 40, height: 40 }}
-    />
-  );
-}
-
 export default function ResolverPage() {
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [player, setPlayer] = useState<any>(null);
@@ -62,8 +51,8 @@ export default function ResolverPage() {
     );
   }
 
-  const dailies = scenarios.slice(0, 2);
-  const open = scenarios.slice(2);
+  const dailies = scenarios.slice(0, 4);
+  const open = scenarios.slice(4);
 
   return (
     <div className="space-y-8">
@@ -77,58 +66,74 @@ export default function ResolverPage() {
         </p>
       </div>
 
-      {/* Daily Challenges */}
+      {/* Daily Challenges — 2x2 grid */}
       {dailies.length > 0 && (
         <div className="animate-fade-in animate-fade-in-delay-1">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[15px] font-medium text-foreground/60">Today's Challenges</h2>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {dailies.map((d, idx) => {
               const res = completed[d.id];
               if (res) {
                 return (
-                  <div key={d.id} className="rounded-2xl glass p-5 sm:p-6">
-                    <div className="flex items-center gap-4 sm:gap-5">
-                      <img src={PUZZLE_IMAGES[idx]} alt="" className="shrink-0 rounded-xl object-cover" style={{ width: 64, height: 64 }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2.5 mb-1">
-                          <span className="font-semibold text-[16px] sm:text-[18px] text-foreground/90 truncate">{d.package_name}</span>
-                          <RegistryBadge registry={d.registry} />
-                        </div>
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                          <span className={cn("text-[12px] font-bold", res.is_correct ? "text-green-600" : "text-red-500")}>
-                            {res.is_correct ? "Correct" : "Incorrect"}
-                          </span>
-                          <span className="text-[12px] font-semibold text-foreground/50">{res.score > 0 ? "+" : ""}{res.score} pts</span>
-                          <span className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full font-medium",
-                            res.verdict === "safe" && "bg-green-50 text-green-600",
-                            res.verdict === "suspicious" && "bg-amber-50 text-amber-600",
-                            res.verdict === "malicious" && "bg-red-50 text-red-600",
-                          )}>
-                            {res.verdict}
-                          </span>
-                        </div>
+                  <div key={d.id} className="rounded-2xl glass overflow-hidden">
+                    <img
+                      src={PUZZLE_IMAGES[idx]}
+                      alt=""
+                      className="w-full object-cover"
+                      style={{ height: 160 }}
+                    />
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-[15px] text-foreground/90 truncate">{d.package_name}</span>
+                        <RegistryBadge registry={d.registry} />
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={cn("text-[12px] font-bold", res.is_correct ? "text-green-600" : "text-red-500")}>
+                          {res.is_correct ? "Correct" : "Incorrect"}
+                        </span>
+                        <span className="text-[12px] font-semibold text-foreground/50">{res.score > 0 ? "+" : ""}{res.score} pts</span>
+                        <span className={cn(
+                          "text-[10px] px-2 py-0.5 rounded-full font-medium",
+                          res.verdict === "safe" && "bg-green-50 text-green-600",
+                          res.verdict === "suspicious" && "bg-amber-50 text-amber-600",
+                          res.verdict === "malicious" && "bg-red-50 text-red-600",
+                        )}>
+                          {res.verdict}
+                        </span>
                       </div>
                     </div>
                   </div>
                 );
               }
               return (
-                <Link key={d.id} href={`/sentinel/inspect/${d.id}`} className="group block rounded-2xl glass glass-hover p-5 sm:p-6">
-                  <div className="flex items-center gap-4 sm:gap-5">
-                    <img src={PUZZLE_IMAGES[idx]} alt="" className="shrink-0 rounded-xl object-cover" style={{ width: 64, height: 64 }} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2.5 mb-1">
-                        <span className="font-semibold text-[16px] sm:text-[18px] text-foreground/90 group-hover:text-foreground transition-colors truncate">{d.package_name}</span>
-                        <RegistryBadge registry={d.registry} />
-                      </div>
-                      <p className="text-[13px] text-muted-foreground/50 font-mono">{d.version_from || "?"} &rarr; {d.version_to || "?"}</p>
+                <Link
+                  key={d.id}
+                  href={`/sentinel/inspect/${d.id}`}
+                  className="group block rounded-2xl glass glass-hover overflow-hidden"
+                >
+                  <img
+                    src={PUZZLE_IMAGES[idx]}
+                    alt=""
+                    className="w-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    style={{ height: 160 }}
+                  />
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="font-semibold text-[15px] text-foreground/90 group-hover:text-foreground transition-colors truncate">
+                        {d.package_name}
+                      </span>
+                      <RegistryBadge registry={d.registry} />
                     </div>
-                    <div className="rounded-lg bg-[#1e3a5f] px-5 py-2.5 text-[13px] font-semibold text-white group-hover:bg-[#2a4f7a] transition-colors shrink-0">
-                      Play
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] text-muted-foreground/50 font-mono">
+                        {d.version_from || "?"} &rarr; {d.version_to || "?"}
+                      </p>
+                      <span className="text-[12px] font-semibold text-[#1e3a5f] group-hover:text-[#2a4f7a] transition-colors">
+                        Play &rarr;
+                      </span>
                     </div>
                   </div>
                 </Link>
@@ -148,16 +153,20 @@ export default function ResolverPage() {
             </span>
           </div>
 
-          <div className="space-y-2 opacity-40 pointer-events-none select-none" style={{ filter: "grayscale(0.6)" }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 opacity-40 pointer-events-none select-none" style={{ filter: "grayscale(0.6)" }}>
             {open.map((s, i) => (
               <div
                 key={s.id}
                 className="flex items-center gap-4 rounded-xl glass p-4"
               >
-                <PuzzleImage index={i + 1} />
-
+                <img
+                  src={PUZZLE_IMAGES[(i + 4) % PUZZLE_IMAGES.length]}
+                  alt=""
+                  className="shrink-0 rounded-lg object-cover"
+                  style={{ width: 40, height: 40 }}
+                />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 sm:gap-2.5 mb-1 sm:mb-1.5 flex-wrap">
+                  <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                     <span className="font-medium text-[13px] text-foreground/80">
                       {s.package_name}
                     </span>
@@ -166,12 +175,6 @@ export default function ResolverPage() {
                       {s.version_from || "?"} &rarr; {s.version_to || "?"}
                     </span>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-[11px] text-muted-foreground/20">
-                    &rarr;
-                  </span>
                 </div>
               </div>
             ))}
