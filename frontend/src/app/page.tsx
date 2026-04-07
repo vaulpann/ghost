@@ -60,29 +60,13 @@ export default function ResolverPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 animate-fade-in">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">
-            Resolver
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
-            Inspect packages. Spot supply chain threats.
-          </p>
-        </div>
-        {player && player.total_inspections > 0 && (
-          <div className="flex gap-5 text-right">
-            {[
-              { label: "Score", value: player.total_score },
-              { label: "Streak", value: player.streak },
-              { label: "Detection", value: player.detection_rate ? `${(player.detection_rate * 100).toFixed(0)}%` : "—" },
-            ].map((s) => (
-              <div key={s.label}>
-                <p className="text-lg font-semibold tabular-nums text-foreground/80">{s.value}</p>
-                <p className="text-[10px] text-muted-foreground/40 uppercase tracking-wider">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="animate-fade-in">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground/90">
+          Can you spot the supply chain attack?
+        </h1>
+        <p className="text-[13px] sm:text-[14px] text-muted-foreground/50 mt-2 max-w-lg leading-relaxed">
+          Real packages. Real diffs. Review the evidence and decide — is this update safe, or has it been compromised?
+        </p>
       </div>
 
       {/* Daily */}
