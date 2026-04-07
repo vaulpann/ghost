@@ -20,10 +20,10 @@ export default function AboutPage() {
           AI-powered vulnerability detection is one of the most exciting developments in security. Automated scanners can now analyze millions of package releases, flag suspicious code patterns, and detect supply chain attacks in near-real time. The throughput is incredible.
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          But there's a problem: <strong className="text-foreground/80">the signal-to-noise ratio is terrible.</strong> AI scanners generate mountains of findings — most of them false positives, edge cases, or technically-true-but-practically-irrelevant flags. Security teams are drowning in slop. A minified file triggers "obfuscation detected." A CI helper reads environment variables and gets flagged as "data exfiltration." A version bump with a new dependency becomes a "critical supply chain risk."
+          But there's a problem: <strong className="text-foreground/80">the signal-to-noise ratio is terrible.</strong> AI scanners generate mountains of findings, most of them false positives, edge cases, or technically-true-but-practically-irrelevant flags. Security teams are drowning in slop. A minified file triggers "obfuscation detected." A CI helper reads environment variables and gets flagged as "data exfiltration." A version bump with a new dependency becomes a "critical supply chain risk."
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          The result: alert fatigue. When everything is flagged, nothing is. The real attacks — the ones where a maintainer's npm token gets stolen and a postinstall script starts exfiltrating SSH keys — get buried under a pile of noise.
+          The result: alert fatigue. When everything is flagged, nothing is. The real attacks, the ones where a maintainer's npm token gets stolen and a postinstall script starts exfiltrating SSH keys, get buried under a pile of noise.
         </p>
       </section>
 
@@ -31,13 +31,13 @@ export default function AboutPage() {
       <section className="space-y-4">
         <h2 className="text-[17px] font-semibold text-foreground/80">Humans are still the best validators</h2>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          Ghost runs an AI-powered supply chain monitor that watches 500+ packages across npm, PyPI, and GitHub. Every new release gets analyzed within 60 seconds. The AI is good at catching things that look wrong — but it still needs humans to confirm what <em>actually is</em> wrong.
+          Ghost runs an AI-powered supply chain monitor that watches 500+ packages across npm, PyPI, and GitHub. Every new release gets analyzed within 60 seconds. The AI is good at catching things that look wrong, but it still needs humans to confirm what <em>actually is</em> wrong.
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          We built Resolver because we think <strong className="text-foreground/80">the best way to validate security findings is to give real people real evidence and let them decide.</strong> Not multiple-choice quizzes. Not sanitized educational examples. Real packages, real version diffs, real maintainer histories, real behavioral signals — presented clearly so you can form your own judgment.
+          We built Resolver because we think <strong className="text-foreground/80">the best way to validate security findings is to give real people real evidence and let them decide.</strong> Not multiple-choice quizzes. Not sanitized educational examples. Real packages, real version diffs, real maintainer histories, real behavioral signals, presented clearly so you can form your own judgment.
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          Think of it like <a href="https://fold.it" target="_blank" rel="noopener noreferrer" className="text-[#1e3a5f] hover:underline font-medium">Foldit</a> for supply chain security. Foldit proved that gamified citizen science could solve protein folding problems that computers alone couldn't crack. We believe the same principle applies here: a network of sharp-eyed developers reviewing package updates can catch what automated scanners miss — and filter out the noise they generate.
+          Think of it like <a href="https://fold.it" target="_blank" rel="noopener noreferrer" className="text-[#1e3a5f] hover:underline font-medium">Foldit</a> for supply chain security. Foldit proved that gamified citizen science could solve protein folding problems that computers alone couldn't crack. We believe the same principle applies here: a network of sharp-eyed developers reviewing package updates can catch what automated scanners miss and filter out the noise they generate.
         </p>
       </section>
 
@@ -66,7 +66,7 @@ export default function AboutPage() {
           You review the evidence. You make the call: safe, suspicious, or malicious. You submit your verdict with a confidence level. After submitting, you see whether you were right and what actually happened with the package.
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          Every challenge uses data pulled from real registries — real version histories, real maintainer info, real dependency trees. Some of these packages were actually compromised. Some were legitimate. Can you tell the difference?
+          Every challenge uses data pulled from real registries: real version histories, real maintainer info, real dependency trees. Some of these packages were actually compromised. Some were legitimate. Can you tell the difference?
         </p>
       </section>
 
@@ -74,7 +74,7 @@ export default function AboutPage() {
       <section className="space-y-4">
         <h2 className="text-[17px] font-semibold text-foreground/80">Where this is going</h2>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
-          Today, Resolver is a daily challenge. But the long-term goal is a real-time validation network. When Ghost's AI scanner flags a new release as suspicious, it should be able to surface that finding to a community of trained reviewers who can confirm or reject it within minutes — not hours or days.
+          Today, Resolver is a daily challenge. But the long-term goal is a real-time validation network. When Ghost's AI scanner flags a new release as suspicious, it should be able to surface that finding to a community of trained reviewers who can confirm or reject it within minutes, not hours or days.
         </p>
         <p className="text-[14px] text-muted-foreground/70 leading-[1.85]">
           Human consensus on top of AI detection. The scanner handles throughput, the community handles precision. Together, they catch more attacks with fewer false alarms. That's the system we're building.
