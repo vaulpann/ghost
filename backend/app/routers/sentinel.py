@@ -129,6 +129,31 @@ async def submit_verdict(
     if not scenario:
         raise HTTPException(404, "Scenario not found")
 
+    # If already submitted, return the existing result instead of erroring
+    existing = await db.execute(
+        select(SentinelVerdict).where(
+            SentinelVerdict.scenario_id == scenario_id,
+            SentinelVerdict.session_id == req.session_id,
+        )
+    )
+    existing_verdict = existing.scalar_one_or_none()
+    if existing_verdict:
+        return VerdictResponse(
+            is_correct=existing_verdict.is_correct,
+            score=existing_verdict.score,
+            was_malicious=scenario.is_malicious,
+            attack_name=scenario.attack_name if scenario.is_malicious else None,
+            attack_type=scenario.attack_type if scenario.is_malicious else None,
+            postmortem=scenario.postmortem,
+            real_cve=scenario.real_cve,
+            real_cvss=scenario.real_cvss,
+            player_level=1,
+            player_title="Dock Worker",
+            player_streak=0,
+            player_total_score=0,
+            player_detection_rate=None,
+        )
+
     # Score the verdict
     is_correct = False
     score = 0

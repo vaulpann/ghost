@@ -319,19 +319,15 @@ export default function InspectPage() {
         localStorage.setItem("ghost-completed", JSON.stringify(completed));
       } catch {}
     } catch (e: any) {
-      // If 409 (already submitted), show result from localStorage or a fallback
+      // If 409 (old backend), show saved result or redirect home
       if (e.message?.includes("409")) {
         const saved = getCompleted()[scenario.id];
         if (saved) {
           setResult(saved);
         } else {
-          // No saved result — fake a minimal one so we don't get stuck
-          setResult({ is_correct: false, score: 0, was_malicious: false, verdict, postmortem: "You already submitted a verdict for this puzzle." });
-          try {
-            const completed = getCompleted();
-            completed[scenario.id] = { verdict, confidence, is_correct: false, score: 0, was_malicious: false, postmortem: "You already submitted a verdict for this puzzle." };
-            localStorage.setItem("ghost-completed", JSON.stringify(completed));
-          } catch {}
+          // No saved result available — just send them back
+          window.location.href = "/";
+          return;
         }
       } else {
         console.error("Submit failed:", e);
