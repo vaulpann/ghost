@@ -205,7 +205,7 @@ export default function InspectPage() {
               <p style={{ fontSize: 14, color: "#444", lineHeight: 1.8 }}>{result.postmortem}</p>
             </div>
           )}
-          <Link href="/sentinel" style={{
+          <Link href="/" style={{
             display: "inline-block", padding: "14px 40px", background: "#111", color: "#fff",
             borderRadius: 10, textDecoration: "none", fontSize: 15, fontWeight: 600,
           }}>

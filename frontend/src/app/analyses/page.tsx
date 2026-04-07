@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getAnalyses } from "@/lib/api";
-import type { Analysis } from "@/lib/types";
+import { getAnalyses, getStats } from "@/lib/api";
+import type { Analysis, Stats } from "@/lib/types";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 import { RiskBadge } from "@/components/analysis/risk-badge";
-import { cn, timeAgo } from "@/lib/utils";
+import { cn, timeAgo, formatNumber } from "@/lib/utils";
 
 const PER_PAGE = 20;
 
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -30,9 +31,13 @@ export default function AnalysesPage() {
         if (registryFilter) params.set("registry", registryFilter);
         params.set("page", String(page));
         params.set("per_page", String(PER_PAGE));
-        const data = await getAnalyses(params.toString());
+        const [data, statsData] = await Promise.all([
+          getAnalyses(params.toString()),
+          page === 1 ? getStats() : Promise.resolve(null),
+        ]);
         setAnalyses(data.items);
         setTotal(data.total);
+        if (statsData) setStats(statsData);
       } catch (e) {
         console.error("Failed to fetch analyses:", e);
       } finally {
@@ -48,11 +53,31 @@ export default function AnalysesPage() {
     <div className="space-y-6">
       <div className="animate-fade-in">
         <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight gradient-text">Analyses</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">{total} security scans completed</p>
+        <p className="text-xs sm:text-sm text-muted-foreground/70 mt-1">
+          Live monitoring across npm, PyPI, and GitHub
+        </p>
       </div>
 
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-fade-in animate-fade-in-delay-1">
+          <StatCard label="Monitored" value={stats.total_packages} />
+          <StatCard label="Analyses" value={stats.total_analyses} />
+          <StatCard
+            label="Flagged"
+            value={stats.flagged_count}
+            accent={stats.flagged_count > 0 ? "yellow" : undefined}
+          />
+          <StatCard
+            label="Critical"
+            value={stats.critical_count}
+            accent={stats.critical_count > 0 ? "red" : undefined}
+          />
+        </div>
+      )}
+
       {/* Filters */}
-      <div className="flex gap-3 animate-fade-in animate-fade-in-delay-1">
+      <div className="flex gap-3 animate-fade-in animate-fade-in-delay-2">
         <select
           value={riskFilter}
           onChange={(e) => setRiskFilter(e.target.value)}
@@ -189,6 +214,36 @@ export default function AnalysesPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number | string;
+  accent?: "yellow" | "red";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl glass p-5",
+        accent === "red" && "glow-red border-red-500/10",
+        accent === "yellow" && "glow-yellow border-yellow-500/10"
+      )}
+    >
+      <p className="text-[11px] text-muted-foreground/60 uppercase tracking-wider font-medium">{label}</p>
+      <p
+        className={cn(
+          "text-3xl font-semibold mt-2 tabular-nums",
+          accent === "red" ? "text-red-400" : accent === "yellow" ? "text-yellow-400" : "stat-number"
+        )}
+      >
+        {typeof value === "number" ? formatNumber(value) : value}
+      </p>
     </div>
   );
 }

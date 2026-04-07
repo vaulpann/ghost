@@ -6,10 +6,9 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Resolver", href: "/sentinel", icon: "R" },
-  { name: "Overview", href: "/", icon: "O" },
-  { name: "Watchlist", href: "/packages", icon: "W" },
+  { name: "Resolver", href: "/", icon: "R" },
   { name: "Analyses", href: "/analyses", icon: "A" },
+  { name: "Watchlist", href: "/packages", icon: "W" },
 ];
 
 const socials = [
