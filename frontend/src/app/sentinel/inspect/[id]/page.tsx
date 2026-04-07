@@ -12,7 +12,7 @@ function getSessionId(): string {
   return id;
 }
 
-const ACCENT = "#1e3a5f"; // dark blue accent for all evidence
+const ACCENT = "#1e3a5f";
 
 const EVIDENCE = [
   { key: "identity", label: "Identity", img: "/sentinel-identity.jpg", color: ACCENT },
@@ -22,8 +22,6 @@ const EVIDENCE = [
   { key: "flow", label: "Data Flow", img: "/sentinel-dataflow.jpg", color: ACCENT },
   { key: "context", label: "Context", img: "/sentinel-context.jpg", color: ACCENT },
 ];
-
-// No grid — tiles are positioned in a rotating circle
 
 const NARRATIVES: Record<string, (d: any) => string> = {
   identity: (d) => {
@@ -142,7 +140,15 @@ export default function InspectPage() {
   const [result, setResult] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const startTime = useRef(Date.now());
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -188,25 +194,25 @@ export default function InspectPage() {
   // === RESULTS ===
   if (result) {
     return (
-      <div style={{ height: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ maxWidth: 480, textAlign: "center", padding: 40 }}>
-          <h2 style={{ fontSize: 48, fontWeight: 800, color: result.is_correct ? "#16a34a" : "#dc2626", marginBottom: 4 }}>
+      <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ maxWidth: 480, width: "100%", textAlign: "center" }}>
+          <h2 style={{ fontSize: isMobile ? 36 : 48, fontWeight: 800, color: result.is_correct ? "#16a34a" : "#dc2626", marginBottom: 4 }}>
             {result.is_correct ? "Correct" : "Wrong"}
           </h2>
-          <p style={{ fontSize: 24, fontWeight: 700, color: "#111", marginBottom: 16 }}>
+          <p style={{ fontSize: isMobile ? 20 : 24, fontWeight: 700, color: "#111", marginBottom: 16 }}>
             {result.score > 0 ? "+" : ""}{result.score} points
           </p>
-          <p style={{ fontSize: 15, color: "#666", lineHeight: 1.7, marginBottom: 24 }}>
+          <p style={{ fontSize: isMobile ? 14 : 15, color: "#666", lineHeight: 1.7, marginBottom: 24 }}>
             {result.was_malicious ? result.attack_name : "This was a legitimate, safe update."}
           </p>
           {result.postmortem && (
-            <div style={{ textAlign: "left", background: "#fff", borderRadius: 16, padding: 24, marginBottom: 24, border: "1px solid #eee" }}>
+            <div style={{ textAlign: "left", background: "#fff", borderRadius: 16, padding: isMobile ? 16 : 24, marginBottom: 24, border: "1px solid #eee" }}>
               <p style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 2, marginBottom: 8, fontWeight: 600 }}>What happened</p>
               <p style={{ fontSize: 14, color: "#444", lineHeight: 1.8 }}>{result.postmortem}</p>
             </div>
           )}
           <Link href="/" style={{
-            display: "inline-block", padding: "14px 40px", background: "#111", color: "#fff",
+            display: "inline-block", padding: isMobile ? "12px 32px" : "14px 40px", background: "#111", color: "#fff",
             borderRadius: 10, textDecoration: "none", fontSize: 15, fontWeight: 600,
           }}>
             Next Package
@@ -216,11 +222,229 @@ export default function InspectPage() {
     );
   }
 
-  // === INSPECTION ===
+  // === MOBILE INSPECTION ===
+  if (isMobile) {
+    return (
+      <div style={{ minHeight: "calc(100vh - 56px)", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 16px 12px", borderBottom: "1px solid #f0f0f0" }}>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#111", margin: 0, lineHeight: 1.1 }}>
+            {scenario.package_name}
+          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+            <span style={{ fontSize: 14, color: "rgba(17,17,17,0.3)", fontWeight: 500 }}>
+              {scenario.version_from} → {scenario.version_to}
+            </span>
+            <span style={{ fontSize: 11, color: "#bbb", fontWeight: 500, letterSpacing: 1 }}>
+              {scenario.registry.toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* Evidence grid */}
+        <div style={{ padding: "16px", flex: 1 }}>
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10,
+          }}>
+            {EVIDENCE.map((ev) => (
+              <button
+                key={ev.key}
+                onClick={() => openEvidence(ev.key)}
+                style={{
+                  aspectRatio: "1", borderRadius: 16, overflow: "hidden",
+                  border: activeEvidence === ev.key ? `3px solid ${ev.color}` : viewed.has(ev.key) ? "2px solid #ddd" : "2px solid #e8e8e8",
+                  cursor: "pointer", position: "relative",
+                  transition: "all 0.2s",
+                  boxShadow: activeEvidence === ev.key ? `0 4px 20px ${ev.color}25` : "0 1px 4px rgba(0,0,0,0.04)",
+                }}
+              >
+                <img
+                  src={ev.img} alt={ev.label}
+                  style={{
+                    width: "100%", height: "100%", objectFit: "cover",
+                    filter: activeEvidence === ev.key ? "brightness(0.7)" : viewed.has(ev.key) ? "brightness(0.85) saturate(0.8)" : "brightness(0.9) saturate(0.5)",
+                    transition: "all 0.3s",
+                  }}
+                />
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  padding: "6px 8px",
+                  background: "linear-gradient(transparent, rgba(0,0,0,0.6))",
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", letterSpacing: 0.3 }}>
+                    {ev.label}
+                  </span>
+                </div>
+                {viewed.has(ev.key) && activeEvidence !== ev.key && (
+                  <div style={{
+                    position: "absolute", top: 6, right: 6,
+                    width: 18, height: 18, borderRadius: "50%",
+                    background: ev.color, display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <span style={{ color: "#fff", fontSize: 10, fontWeight: 700 }}>✓</span>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Vote button */}
+          <button
+            onClick={() => { setActiveEvidence(null); setShowVote(true); }}
+            style={{
+              width: "100%", marginTop: 16, padding: "16px",
+              borderRadius: 14, border: "2px solid #e0e0e0",
+              background: "#fff", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              transition: "all 0.2s",
+            }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 700, color: "#888", letterSpacing: 1.5 }}>VOTE</span>
+            <span style={{ fontSize: 12, color: "#ccc" }}>{viewed.size}/6</span>
+          </button>
+        </div>
+
+        {/* Mobile evidence panel — full screen overlay from bottom */}
+        {activeEvidence && scenario.tools[activeEvidence] && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 50,
+            display: "flex", flexDirection: "column",
+          }}>
+            {/* Backdrop */}
+            <div
+              onClick={() => setActiveEvidence(null)}
+              style={{ flex: "0 0 auto", height: 60, background: "rgba(0,0,0,0.4)" }}
+            />
+            {/* Panel */}
+            <div style={{
+              flex: 1, background: "#fff",
+              borderRadius: "20px 20px 0 0",
+              padding: "20px 16px", overflowY: "auto",
+              animation: "slideUp 0.25s ease-out",
+            }}>
+              {/* Handle bar */}
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: "#ddd" }} />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 3, background: EVIDENCE.find(e => e.key === activeEvidence)?.color }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#111", textTransform: "uppercase", letterSpacing: 1.5 }}>
+                    {EVIDENCE.find(e => e.key === activeEvidence)?.label}
+                  </span>
+                </div>
+                <button onClick={() => setActiveEvidence(null)} style={{
+                  background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "#ccc", lineHeight: 1, padding: 4,
+                }}>×</button>
+              </div>
+
+              <p style={{ fontSize: 14, color: "#333", lineHeight: 1.85, whiteSpace: "pre-line" }}>
+                {NARRATIVES[activeEvidence]?.(scenario.tools[activeEvidence]) || "No data available."}
+              </p>
+
+              <details style={{ marginTop: 24, fontSize: 12 }}>
+                <summary style={{ cursor: "pointer", color: "#aaa", userSelect: "none" }}>View raw evidence</summary>
+                <pre style={{ marginTop: 8, fontSize: 11, color: "#888", fontFamily: "monospace", background: "#fafafa", padding: 12, borderRadius: 8, overflowX: "auto", whiteSpace: "pre-wrap" }}>
+                  {JSON.stringify(scenario.tools[activeEvidence], null, 2)}
+                </pre>
+              </details>
+
+              {/* Bottom padding for safe area */}
+              <div style={{ height: 40 }} />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile vote panel — full screen overlay from bottom */}
+        {showVote && !activeEvidence && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 50,
+            display: "flex", flexDirection: "column",
+          }}>
+            <div
+              onClick={() => setShowVote(false)}
+              style={{ flex: "0 0 auto", height: 100, background: "rgba(0,0,0,0.4)" }}
+            />
+            <div style={{
+              flex: 1, background: "#fff",
+              borderRadius: "20px 20px 0 0",
+              padding: "20px 16px", display: "flex", flexDirection: "column",
+              animation: "slideUp 0.25s ease-out",
+            }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: "#ddd" }} />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: "#111" }}>Your Verdict</span>
+                <button onClick={() => setShowVote(false)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 22, color: "#ccc", padding: 4 }}>×</button>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+                {[
+                  { v: "safe", label: "Safe", c: "#16a34a", bg: "#f0fdf4" },
+                  { v: "suspicious", label: "Flag", c: "#d97706", bg: "#fffbeb" },
+                  { v: "malicious", label: "Malicious", c: "#dc2626", bg: "#fef2f2" },
+                ].map((o) => (
+                  <button key={o.v} onClick={() => setVerdict(o.v)} style={{
+                    flex: 1, padding: "14px 4px", borderRadius: 10, fontSize: 14, fontWeight: 700,
+                    border: verdict === o.v ? `2px solid ${o.c}` : "2px solid #eee",
+                    background: verdict === o.v ? o.bg : "#fff",
+                    color: verdict === o.v ? o.c : "#999",
+                    cursor: "pointer", transition: "all 0.15s",
+                  }}>{o.label}</button>
+                ))}
+              </div>
+
+              <textarea
+                value={reasoning}
+                onChange={(e) => setReasoning(e.target.value)}
+                placeholder="What did you notice? (optional)"
+                style={{
+                  width: "100%", padding: 12, borderRadius: 10, border: "1px solid #eee",
+                  fontSize: 13, color: "#444", resize: "none", height: 80, marginBottom: 14,
+                  fontFamily: "'Inter Tight', sans-serif", boxSizing: "border-box",
+                }}
+              />
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                <span style={{ fontSize: 12, color: "#aaa", whiteSpace: "nowrap" }}>Confidence</span>
+                <input type="range" min={10} max={100} value={confidence} onChange={(e) => setConfidence(Number(e.target.value))}
+                  style={{ flex: 1, accentColor: "#111" }} />
+                <span style={{ fontSize: 13, fontFamily: "monospace", color: "#666", width: 32 }}>{confidence}%</span>
+              </div>
+
+              <div style={{ marginTop: "auto", paddingBottom: 20 }}>
+                <button onClick={handleSubmit} disabled={!verdict || submitting} style={{
+                  width: "100%", padding: 16, borderRadius: 12, border: "none",
+                  background: !verdict || submitting ? "#eee" : "#111",
+                  color: !verdict || submitting ? "#bbb" : "#fff",
+                  fontSize: 16, fontWeight: 700, cursor: !verdict || submitting ? "default" : "pointer",
+                  transition: "all 0.15s",
+                }}>
+                  {submitting ? "Submitting..." : "Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <style>{`
+          @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // === DESKTOP INSPECTION ===
   return (
     <div style={{ height: "calc(100vh - 56px)", position: "relative", overflow: "hidden" }}>
 
-      {/* Lower-left: Package info (with blur effect below) */}
+      {/* Lower-left: Package info */}
       <div style={{ position: "absolute", bottom: 40, left: 40, zIndex: 20 }}>
         <h1 style={{ fontSize: 42, fontWeight: 800, color: "#111", margin: 0, lineHeight: 1.1 }}>
           {scenario.package_name}
@@ -245,9 +469,9 @@ export default function InspectPage() {
           animation: "orbitSpin 60s linear infinite",
         }}>
           {EVIDENCE.map((ev, i) => {
-            const angle = (i * 60) - 90; // 6 items, 60° apart, start from top
+            const angle = (i * 60) - 90;
             const rad = angle * (Math.PI / 180);
-            const radius = 185; // distance from center
+            const radius = 185;
             const x = Math.cos(rad) * radius;
             const y = Math.sin(rad) * radius;
             return (
@@ -259,7 +483,6 @@ export default function InspectPage() {
                   transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
                 }}
               >
-                {/* Counter-rotate so tiles stay upright */}
                 <div style={{ animation: "orbitCounterSpin 60s linear infinite" }}>
                   <EvidenceTile ev={ev}
                     active={activeEvidence === ev.key} viewed={viewed.has(ev.key)}
@@ -270,7 +493,7 @@ export default function InspectPage() {
           })}
         </div>
 
-        {/* Center VOTE button (does not rotate) */}
+        {/* Center VOTE button */}
         <button
           onClick={() => { setActiveEvidence(null); setShowVote(true); }}
           style={{
@@ -326,7 +549,7 @@ export default function InspectPage() {
         </div>
       )}
 
-      {/* Vote panel — shows when center is clicked */}
+      {/* Vote panel */}
       {showVote && !activeEvidence && (
         <div style={{
           position: "absolute", top: 0, right: 0, bottom: 0, width: "min(380px, 38vw)",
@@ -421,7 +644,6 @@ function EvidenceTile({ ev, active, viewed, onClick }: {
         transform: active ? "scale(1.05)" : "scale(1)",
       }}
     >
-      {/* Background image */}
       <img
         src={ev.img}
         alt={ev.label}
@@ -431,7 +653,6 @@ function EvidenceTile({ ev, active, viewed, onClick }: {
           transition: "all 0.3s",
         }}
       />
-      {/* Label overlay */}
       <div style={{
         position: "absolute", bottom: 0, left: 0, right: 0,
         padding: "8px 10px",
@@ -441,7 +662,6 @@ function EvidenceTile({ ev, active, viewed, onClick }: {
           {ev.label}
         </span>
       </div>
-      {/* Viewed checkmark */}
       {viewed && !active && (
         <div style={{
           position: "absolute", top: 8, right: 8,
