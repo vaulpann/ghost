@@ -500,11 +500,14 @@ function riskEmoji(level) {
 }
 
 function riskLabel(level) {
+  if (!level) return "Unknown";
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
 function buildSummary(scanResult, totalDeps) {
-  const { findings = [], total_checked = 0, total_clean = 0 } = scanResult;
+  const findings = scanResult.findings || [];
+  const total_checked = scanResult.summary?.checked || scanResult.total_checked || totalDeps;
+  const total_clean = scanResult.summary?.clean || scanResult.total_clean || (total_checked - findings.length);
   const lines = [];
 
   if (findings.length === 0) {
@@ -522,8 +525,10 @@ function buildSummary(scanResult, totalDeps) {
     lines.push("|---------|---------|------|-------|");
 
     for (const f of findings) {
-      const emoji = riskEmoji(f.risk_level);
-      lines.push(`| ${f.package} | ${f.version} | ${emoji} ${riskLabel(f.risk_level)} | ${f.summary} |`);
+      const risk = f.risk || f.risk_level || "unknown";
+      const issue = f.recommendation || (f.reasons && f.reasons[0]) || f.summary || "";
+      const emoji = riskEmoji(risk);
+      lines.push(`| ${f.package || "?"} | ${f.version || "?"} | ${emoji} ${riskLabel(risk)} | ${issue} |`);
     }
 
     lines.push("");
@@ -649,7 +654,7 @@ function shouldFail(findings) {
   const threshold = SEVERITY_ORDER[FAIL_ON] || SEVERITY_ORDER.critical;
 
   for (const f of findings) {
-    const level = SEVERITY_ORDER[f.risk_level] || 0;
+    const level = SEVERITY_ORDER[f.risk || f.risk_level] || 0;
     if (level >= threshold) return true;
   }
 
@@ -746,11 +751,11 @@ async function main() {
   // 7. Exit code
   if (shouldFail(findings)) {
     const worst = findings.reduce((a, b) =>
-      (SEVERITY_ORDER[b.risk_level] || 0) > (SEVERITY_ORDER[a.risk_level] || 0) ? b : a
+      (SEVERITY_ORDER[b.risk || b.risk_level] || 0) > (SEVERITY_ORDER[a.risk || a.risk_level] || 0) ? b : a
     );
     error(
       `Supply chain risk detected: ${findings.length} issue(s), ` +
-      `worst severity: ${worst.risk_level}. Failing because fail-on=${FAIL_ON}.`
+      `worst severity: ${worst.risk || worst.risk_level}. Failing because fail-on=${FAIL_ON}.`
     );
     process.exit(1);
   }
