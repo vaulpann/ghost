@@ -74,12 +74,27 @@ class PyPIClient(RegistryClient):
             or info.get("home_page")
         )
 
+        downloads = await self._get_weekly_downloads(package_name)
+
         return PackageMetadata(
             name=package_name,
             description=info.get("summary"),
             repository_url=repo_url,
+            weekly_downloads=downloads,
             latest_version=info.get("version"),
         )
+
+    async def _get_weekly_downloads(self, package_name: str) -> int | None:
+        """Fetch weekly download count from pypistats.org API."""
+        try:
+            url = f"https://pypistats.org/api/packages/{package_name}/recent"
+            resp = await self._client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("data", {}).get("last_week")
+        except Exception:
+            pass
+        return None
 
     async def download_version(self, package_name: str, version: str, dest_dir: str) -> str:
         info = await self.get_version_info(package_name, version)

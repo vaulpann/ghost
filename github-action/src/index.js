@@ -528,7 +528,9 @@ function buildSummary(scanResult, totalDeps) {
       const risk = f.risk || f.risk_level || "unknown";
       const issue = f.recommendation || (f.reasons && f.reasons[0]) || f.summary || "";
       const emoji = riskEmoji(risk);
-      lines.push(`| ${f.package || "?"} | ${f.version || "?"} | ${emoji} ${riskLabel(risk)} | ${issue} |`);
+      const pkgName = f.registry_url ? `[${f.package}](${f.registry_url})` : (f.package || "?");
+      const dl = f.weekly_downloads != null ? ` (${Number(f.weekly_downloads).toLocaleString()}/wk)` : "";
+      lines.push(`| ${pkgName}${dl} | ${f.version || "?"} | ${emoji} ${riskLabel(risk)} | ${issue} |`);
     }
 
     lines.push("");
@@ -731,16 +733,20 @@ async function main() {
   const newDeps = allDeps.filter((d) => d.is_new);
   if (newDeps.length > 0) {
     info(`New/changed dependencies: ${newDeps.length} (${newDeps.map((d) => d.name).join(", ")})`);
+  } else {
+    info("No new or changed dependencies detected.");
+    writeSummary("## \u2705 Ghost Supply Chain Scan\n\nNo new or changed dependencies to scan.");
+    return;
   }
 
-  // 4. Call Ghost API
-  const scanResult = await callGhostScan(allDeps);
+  // 4. Call Ghost API — only scan new/changed deps, not the entire tree
+  const scanResult = await callGhostScan(newDeps);
   const findings = scanResult.findings || [];
 
   info(`Scan complete. ${findings.length} issue(s) found.`);
 
   // 5. Format output
-  const summary = buildSummary(scanResult, allDeps.length);
+  const summary = buildSummary(scanResult, newDeps.length);
   writeSummary(summary);
 
   // 6. Post PR comment only if there are findings

@@ -129,6 +129,8 @@ class Finding(BaseModel):
     risk: str  # "critical", "high", "medium", "low"
     reasons: list[str]
     recommendation: str
+    registry_url: str | None = None  # Link to verify the actual package
+    weekly_downloads: int | None = None
 
 
 class ScanSummary(BaseModel):
@@ -658,8 +660,13 @@ async def scan_dependencies(req: ScanRequest):
         elif reasons:
             heuristic_only.append((dep, reasons, meta))
 
+    def _registry_url(dep: Dependency) -> str:
+        if dep.registry == "npm":
+            return f"https://www.npmjs.com/package/{dep.name}"
+        return f"https://pypi.org/project/{dep.name}/"
+
     # Heuristic-only findings (not serious enough for AI)
-    for dep, reasons, _meta in heuristic_only:
+    for dep, reasons, meta in heuristic_only:
         findings.append(Finding(
             package=dep.name,
             registry=dep.registry,
@@ -667,6 +674,8 @@ async def scan_dependencies(req: ScanRequest):
             risk="low",
             reasons=reasons,
             recommendation="No action required, noted for awareness",
+            registry_url=_registry_url(dep),
+            weekly_downloads=meta.get("weekly_downloads"),
         ))
 
     # Phase 2 — AI deep-dive on flagged deps (parallel)
@@ -677,7 +686,7 @@ async def scan_dependencies(req: ScanRequest):
         ]
         ai_results = await asyncio.gather(*ai_tasks, return_exceptions=True)
 
-        for (dep, reasons, _meta), ai_result in zip(needs_ai, ai_results):
+        for (dep, reasons, meta), ai_result in zip(needs_ai, ai_results):
             if isinstance(ai_result, Exception):
                 logger.warning("AI analysis failed for %s: %s", dep.name, ai_result)
                 risk, final_reasons, recommendation = (
@@ -693,6 +702,8 @@ async def scan_dependencies(req: ScanRequest):
                 risk=risk,
                 reasons=final_reasons,
                 recommendation=recommendation,
+                registry_url=_registry_url(dep),
+                weekly_downloads=meta.get("weekly_downloads"),
             ))
 
     # Sort findings by severity
