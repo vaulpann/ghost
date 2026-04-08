@@ -182,6 +182,22 @@ class Finding(BaseModel):
     weekly_downloads: int | None = None
 
 
+class PackageResult(BaseModel):
+    package: str
+    registry: str
+    version: str | None
+    previous_version: str | None = None
+    is_new: bool = False
+    risk: str  # "critical", "high", "medium", "low"
+    summary: str
+    reasons: list[str]
+    recommendation: str
+    registry_url: str | None = None
+    weekly_downloads: int | None = None
+    analyzed_code: bool = False
+    analysis_basis: str = "metadata_only"
+
+
 class ScanSummary(BaseModel):
     total_deps: int
     checked: int
@@ -191,8 +207,46 @@ class ScanSummary(BaseModel):
 
 class ScanResponse(BaseModel):
     findings: list[Finding]
+    results: list[PackageResult]
     summary: ScanSummary
     scan_id: str
+
+
+def _make_summary(
+    dep: Dependency,
+    risk: str,
+    reasons: list[str],
+    analyzed_code: bool,
+    analysis_basis: str,
+    recommendation: str,
+) -> str:
+    subject = (
+        f"New dependency {dep.name}@{dep.version or 'latest'}"
+        if dep.is_new
+        else f"Update {dep.name} {dep.previous_version or '?'} -> {dep.version or '?'}"
+    )
+
+    if risk in ("critical", "high"):
+        evidence = reasons[0] if reasons else recommendation
+        return f"{subject} looks risky. Evidence: {evidence}."
+
+    if reasons:
+        basis = (
+            "I inspected the package source"
+            if analysis_basis == "package_source"
+            else "I inspected the version diff"
+            if analysis_basis == "version_diff"
+            else "I validated registry metadata"
+        )
+        return f"{subject} does not look blocking, but {basis.lower()} and found: {reasons[0]}."
+
+    if analyzed_code:
+        if analysis_basis == "package_source":
+            return f"{subject} looks normal after inspecting key package source files. No suspicious code patterns stood out."
+        if analysis_basis == "version_diff":
+            return f"{subject} looks normal after reviewing the published version diff. No suspicious code changes stood out."
+
+    return f"{subject} looks normal after registry validation. No meaningful supply-chain concerns were identified."
 
 
 # ---------------------------------------------------------------------------
@@ -570,7 +624,7 @@ async def _ai_analyze(
     dep: Dependency,
     reasons: list[str],
     meta: dict,
-) -> tuple[str, list[str], str]:
+) -> tuple[str, list[str], str, str, bool]:
     """Analyze a dependency using OpenAI with actual code inspection.
 
     For version changes: downloads both versions, diffs the code.
@@ -580,7 +634,7 @@ async def _ai_analyze(
     """
     if not settings.openai_api_key:
         risk = "high" if len(reasons) >= 3 else "medium"
-        return risk, reasons, "Review this dependency manually before merging"
+        return risk, reasons, "Review this dependency manually before merging", "metadata_only", False
 
     # Get actual code to analyze
     diff_text = None
@@ -592,6 +646,8 @@ async def _ai_analyze(
     # Always try version diff (for version changes, or even for new deps if we can find a prior version)
     if not source_inspection:
         diff_text = await _get_version_diff(dep, meta)
+    analysis_basis = "package_source" if source_inspection else "version_diff" if diff_text else "metadata_only"
+    analyzed_code = analysis_basis in {"package_source", "version_diff"}
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -669,7 +725,7 @@ Be precise and conservative:
 - Cite the specific code behavior when you claim meaningful risk.
 
 Respond in this exact JSON format (no markdown, no backticks):
-{{"risk": "critical|high|medium|low", "has_concrete_evidence": true, "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence"}}"""
+{{"risk": "critical|high|medium|low", "has_concrete_evidence": true, "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence", "summary": "1-2 sentence explanation of what changed and why it looks safe or risky"}}"""
 
     try:
         response = await client.chat.completions.create(
@@ -701,12 +757,12 @@ Respond in this exact JSON format (no markdown, no backticks):
             risk = "low"
 
         recommendation = result.get("recommendation", "Review this dependency before merging")
-        return risk, reasons, recommendation
+        return risk, reasons, recommendation, analysis_basis, analyzed_code
 
     except Exception:
         logger.warning("AI analysis failed for %s, falling back to heuristic scoring", dep.name, exc_info=True)
         risk = "high" if len(reasons) >= 3 else "medium"
-        return risk, reasons, "Review this dependency manually before merging"
+        return risk, reasons, "Review this dependency manually before merging", analysis_basis, analyzed_code
 
 
 # ---------------------------------------------------------------------------
@@ -727,6 +783,7 @@ async def scan_dependencies(req: ScanRequest):
     pypi_client = PyPIClient()
 
     findings: list[Finding] = []
+    results_out: list[PackageResult] = []
     checked = 0
 
     # Phase 1 — heuristic checks (parallel)
@@ -746,9 +803,11 @@ async def scan_dependencies(req: ScanRequest):
             logger.warning("Heuristic check failed for %s: %s", dep.name, result)
             continue
         reasons, meta, send_to_ai = result
-        if send_to_ai:
+        if meta.get("version_exists") is False:
+            heuristic_only.append((dep, reasons, meta))
+        elif send_to_ai or dep.is_new or dep.previous_version:
             needs_ai.append((dep, reasons, meta))
-        elif reasons:
+        else:
             heuristic_only.append((dep, reasons, meta))
 
     def _registry_url(dep: Dependency) -> str:
@@ -759,19 +818,34 @@ async def scan_dependencies(req: ScanRequest):
     # Heuristic-only findings (not serious enough for AI)
     for dep, reasons, meta in heuristic_only:
         reasons = _dedupe_reasons(reasons)
-        if not reasons:
-            continue
-        findings.append(Finding(
+        risk = "low"
+        recommendation = "No blocking issues found from registry validation."
+        summary = _make_summary(
+            dep=dep,
+            risk=risk,
+            reasons=reasons,
+            analyzed_code=False,
+            analysis_basis="metadata_only",
+            recommendation=recommendation,
+        )
+        result_item = PackageResult(
             package=dep.name,
             registry=dep.registry,
             version=dep.version,
             previous_version=dep.previous_version,
-            risk="low",
+            is_new=dep.is_new,
+            risk=risk,
+            summary=summary,
             reasons=reasons,
-            recommendation="No action required, noted for awareness",
+            recommendation=recommendation,
             registry_url=_registry_url(dep),
             weekly_downloads=meta.get("weekly_downloads"),
-        ))
+            analyzed_code=False,
+            analysis_basis="metadata_only",
+        )
+        results_out.append(result_item)
+        if reasons:
+            findings.append(Finding(**result_item.model_dump(exclude={"summary", "is_new", "analyzed_code", "analysis_basis"})))
 
     # Phase 2 — AI deep-dive on flagged deps (parallel)
     if needs_ai:
@@ -784,38 +858,54 @@ async def scan_dependencies(req: ScanRequest):
         for (dep, reasons, meta), ai_result in zip(needs_ai, ai_results):
             if isinstance(ai_result, Exception):
                 logger.warning("AI analysis failed for %s: %s", dep.name, ai_result)
-                risk, final_reasons, recommendation = (
-                    "medium", reasons, "Review this dependency manually"
+                risk, final_reasons, recommendation, analysis_basis, analyzed_code = (
+                    "medium", reasons, "Review this dependency manually", "metadata_only", False
                 )
             else:
-                risk, final_reasons, recommendation = ai_result
+                risk, final_reasons, recommendation, analysis_basis, analyzed_code = ai_result
 
             final_reasons = _dedupe_reasons(final_reasons)
-            if risk == "low" and not final_reasons:
-                continue
             if risk == "low" and final_reasons and all(
                 _reason_is_weak_signal(reason) for reason in final_reasons
             ):
-                continue
+                final_reasons = []
 
-            findings.append(Finding(
+            summary = _make_summary(
+                dep=dep,
+                risk=risk,
+                reasons=final_reasons,
+                analyzed_code=analyzed_code,
+                analysis_basis=analysis_basis,
+                recommendation=recommendation,
+            )
+            result_item = PackageResult(
                 package=dep.name,
                 registry=dep.registry,
                 version=dep.version,
                 previous_version=dep.previous_version,
+                is_new=dep.is_new,
                 risk=risk,
+                summary=summary,
                 reasons=final_reasons,
                 recommendation=recommendation,
                 registry_url=_registry_url(dep),
                 weekly_downloads=meta.get("weekly_downloads"),
-            ))
+                analyzed_code=analyzed_code,
+                analysis_basis=analysis_basis,
+            )
+            results_out.append(result_item)
+
+            if risk != "low" or final_reasons:
+                findings.append(Finding(**result_item.model_dump(exclude={"summary", "is_new", "analyzed_code", "analysis_basis"})))
 
     # Sort findings by severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: severity_order.get(f.risk, 4))
+    results_out.sort(key=lambda r: (severity_order.get(r.risk, 4), r.package))
 
     return ScanResponse(
         findings=findings,
+        results=results_out,
         summary=ScanSummary(
             total_deps=len(req.dependencies),
             checked=checked,
