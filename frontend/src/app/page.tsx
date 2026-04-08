@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getSentinelDaily, getSentinelScenarios, getSentinelCompletions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://ghost-api-495743911277.us-central1.run.app";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
@@ -37,15 +38,12 @@ export default function ResolverPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [dailyData, allData, compData] = await Promise.all([
-          getSentinelDaily(),
-          getSentinelScenarios("per_page=50"),
-          getSentinelCompletions(getSessionId()).catch(() => ({ completions: {} })),
-        ]);
-        const dailyIds = new Set(dailyData.items.map((d: any) => d.id));
-        setDailies(dailyData.items);
-        setOpen(allData.items.filter((s: any) => !dailyIds.has(s.id)));
-        setCompleted(compData.completions);
+        const sessionId = getSessionId();
+        const res = await fetch(`${API_BASE}/api/v1/sentinel/daily?session_id=${sessionId}`);
+        const data = await res.json();
+        setDailies(data.dailies || []);
+        setOpen(data.open || []);
+        setCompleted(data.completions || {});
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     }

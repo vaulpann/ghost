@@ -751,15 +751,19 @@ async def main():
     logger.info("=== Generating Real Sentinel Scenarios ===")
 
     async with async_session() as db:
-        # Clear existing
-        await db.execute(text("DELETE FROM sentinel_verdicts"))
-        await db.execute(text("DELETE FROM sentinel_players"))
-        await db.execute(text("DELETE FROM sentinel_scenarios"))
-        await db.commit()
+        # Check which scenarios already exist — skip them
+        existing = await db.execute(text("SELECT package_name FROM sentinel_scenarios"))
+        existing_names = {row[0] for row in existing.fetchall()}
+        logger.info("Existing scenarios: %s", existing_names or "none")
 
         for attack in ATTACKS:
             pkg = attack["package"]
             reg = attack["registry"]
+
+            if pkg in existing_names:
+                logger.info("Skipping %s — already exists", pkg)
+                continue
+
             logger.info("Fetching real data for %s (%s)...", pkg, reg)
 
             # Fetch REAL registry data

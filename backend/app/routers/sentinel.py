@@ -40,28 +40,28 @@ TOOLS_BY_LEVEL = {
 
 
 @router.get("/sentinel/daily")
-async def get_daily_challenges(db: AsyncSession = Depends(get_db)):
-    """Return today's 4 challenges. Picks from unused scenarios and locks them to today's date.
-    Once assigned, the same 4 are returned for the rest of the day (midnight EST)."""
+async def get_daily_challenges(
+    session_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return today's 4 daily challenges + user completions in a single call.
+    Picks from unused scenarios and locks them to today's date (midnight EST)."""
     from datetime import datetime as dt
     from zoneinfo import ZoneInfo
 
     today = dt.now(ZoneInfo("America/New_York")).date()
 
-    # Check if today's challenges are already assigned
+    # Get today's assigned scenarios
     result = await db.execute(
         select(SentinelScenario).where(SentinelScenario.used_on_date == today)
     )
-    todays = result.scalars().all()
+    todays = list(result.scalars().all())
 
     if len(todays) < 4:
-        # Pick from unused scenarios
         unused_result = await db.execute(
             select(SentinelScenario).where(SentinelScenario.used_on_date.is_(None))
         )
         unused = list(unused_result.scalars().all())
-
-        # Need 4 - len(todays) more
         needed = 4 - len(todays)
         if unused and needed > 0:
             import random
@@ -70,19 +70,35 @@ async def get_daily_challenges(db: AsyncSession = Depends(get_db)):
             for s in picks:
                 s.used_on_date = today
             await db.commit()
-            todays = list(todays) + picks
+            todays = todays + picks
 
-    # Build response
-    items = []
-    for s in todays[:4]:
-        verdict_count = (await db.execute(
-            select(func.count(SentinelVerdict.id)).where(SentinelVerdict.scenario_id == s.id)
-        )).scalar() or 0
-        resp = ScenarioResponse.model_validate(s)
-        resp.total_inspections = verdict_count
-        items.append(resp)
+    items = [ScenarioResponse.model_validate(s) for s in todays[:4]]
 
-    return {"items": items}
+    # Get all non-daily scenarios for the "open" section
+    open_result = await db.execute(
+        select(SentinelScenario).where(SentinelScenario.used_on_date != today)
+    )
+    open_items = [ScenarioResponse.model_validate(s) for s in open_result.scalars().all()]
+
+    # Get user completions if session_id provided
+    completions = {}
+    if session_id:
+        comp_result = await db.execute(
+            select(SentinelVerdict, SentinelScenario)
+            .join(SentinelScenario, SentinelVerdict.scenario_id == SentinelScenario.id)
+            .where(SentinelVerdict.session_id == session_id)
+        )
+        for verdict, scenario in comp_result.all():
+            completions[str(scenario.id)] = {
+                "verdict": verdict.verdict,
+                "is_correct": verdict.is_correct,
+                "score": verdict.score,
+                "was_malicious": scenario.is_malicious,
+                "attack_name": scenario.attack_name if scenario.is_malicious else None,
+                "postmortem": scenario.postmortem,
+            }
+
+    return {"dailies": items, "open": open_items, "completions": completions}
 
 
 @router.get("/sentinel/scenarios", response_model=ScenarioListResponse)
