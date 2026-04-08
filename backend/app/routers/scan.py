@@ -1,6 +1,7 @@
 """POST /api/v1/scan — analyze dependencies for supply chain threats."""
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -110,6 +111,7 @@ def _is_typosquat(name: str, registry: str) -> str | None:
 class Dependency(BaseModel):
     name: str
     version: str | None = None
+    previous_version: str | None = None
     registry: str  # "npm" or "pypi"
     is_new: bool = False
 
@@ -348,28 +350,118 @@ async def _heuristic_check(
 # Phase 2: AI deep-dive (flagged deps only)
 # ---------------------------------------------------------------------------
 
+async def _get_version_diff(dep: Dependency, meta: dict) -> str | None:
+    """Download and diff two versions of a package. Returns the diff text or None."""
+    if not dep.version:
+        return None
+
+    # We need a "previous version" to diff against.
+    # For the version field "X.Y.Z", try to find the prior version from registry data.
+    # If dep has previous_version set, use that. Otherwise try to infer.
+    prev_version = dep.previous_version if hasattr(dep, 'previous_version') and dep.previous_version else None
+
+    if not prev_version:
+        # Try to get version list from registry and find the one before this
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                if dep.registry == "npm":
+                    resp = await client.get(f"{NPM_REGISTRY}/{dep.name}")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        times = data.get("time", {})
+                        sorted_versions = sorted(
+                            [(v, t) for v, t in times.items() if v not in ("created", "modified")],
+                            key=lambda x: x[1]
+                        )
+                        version_list = [v for v, _ in sorted_versions]
+                        if dep.version in version_list:
+                            idx = version_list.index(dep.version)
+                            if idx > 0:
+                                prev_version = version_list[idx - 1]
+                elif dep.registry == "pypi":
+                    resp = await client.get(f"{PYPI_API}/{dep.name}/json")
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        releases = data.get("releases", {})
+                        # Sort by upload time of first file in each release
+                        version_times = []
+                        for v, files in releases.items():
+                            if files:
+                                version_times.append((v, files[0].get("upload_time_iso_8601", "")))
+                        version_times.sort(key=lambda x: x[1])
+                        version_list = [v for v, _ in version_times]
+                        if dep.version in version_list:
+                            idx = version_list.index(dep.version)
+                            if idx > 0:
+                                prev_version = version_list[idx - 1]
+        except Exception:
+            logger.debug("Could not determine previous version for %s", dep.name)
+
+    if not prev_version:
+        return None
+
+    # Use the existing diff tool
+    from app.services.analysis.agent import diff_package_versions
+    try:
+        result_json = await diff_package_versions(dep.name, prev_version, dep.version, dep.registry)
+        result = json.loads(result_json)
+        if "error" in result:
+            return None
+        diff_text = result.get("diff", "")
+        if not diff_text or diff_text == "No source code changes detected.":
+            return None
+        # Cap at 15K chars for the AI prompt
+        if len(diff_text) > 15000:
+            diff_text = diff_text[:15000] + "\n\n[... truncated ...]"
+        return diff_text
+    except Exception:
+        logger.debug("Version diff failed for %s", dep.name, exc_info=True)
+        return None
+
+
 async def _ai_analyze(
     dep: Dependency,
     reasons: list[str],
     meta: dict,
 ) -> tuple[str, list[str], str]:
-    """Ask GPT-4o-mini whether this flagged package is malicious.
+    """Analyze a flagged dependency using OpenAI with actual version diff.
 
     Returns (risk_level, updated_reasons, recommendation).
     """
     if not settings.openai_api_key:
-        # No API key — fall back to heuristic-only risk assessment
         risk = "high" if len(reasons) >= 3 else "medium"
         return risk, reasons, "Review this dependency manually before merging"
+
+    # Get the actual code diff between versions
+    diff_text = await _get_version_diff(dep, meta)
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     downloads = meta.get('weekly_downloads')
     dl_context = ""
     if downloads and downloads > 100000:
-        dl_context = f"\nIMPORTANT: This is a POPULAR package ({downloads:,} weekly downloads). Popular packages are HIGH-VALUE TARGETS for account takeover attacks (e.g., ua-parser-js, event-stream, coa). Evaluate whether install scripts or behavioral changes could indicate compromise. Do NOT dismiss concerns just because it's popular."
+        dl_context = f"\nIMPORTANT: This is a POPULAR package ({downloads:,} weekly downloads). Popular packages are HIGH-VALUE TARGETS for account takeover attacks (e.g., ua-parser-js, event-stream, coa). Do NOT dismiss concerns just because it's popular."
 
-    prompt = f"""You are a supply-chain security analyst. A dependency was flagged during an automated scan. Analyze whether it is likely malicious, a typosquat, or suspicious.
+    diff_section = ""
+    if diff_text:
+        diff_section = f"""
+
+VERSION DIFF (what actually changed in the code):
+```
+{diff_text}
+```
+
+Analyze the actual code changes above. Look for:
+- New install scripts (preinstall/postinstall) that download or execute anything
+- Obfuscated code (base64, hex encoding, eval, Function constructor)
+- New outbound network calls to hardcoded URLs/IPs
+- Credential/token/key access patterns
+- New file I/O that reads sensitive paths (.ssh, .npmrc, .env)
+- Code that doesn't match the package's stated purpose"""
+    else:
+        diff_section = "\n(Could not retrieve version diff — evaluate based on metadata only)"
+
+    prompt = f"""You are a supply-chain security analyst. Analyze this dependency for signs of compromise or malicious behavior.
 
 Package: {dep.name}
 Registry: {dep.registry}
@@ -378,29 +470,29 @@ Is new dependency: {dep.is_new}
 {dl_context}
 
 Heuristic flags:
-{chr(10).join(f"- {r}" for r in reasons) if reasons else "- New dependency added (no specific heuristic flags, but needs review)"}
+{chr(10).join(f"- {r}" for r in reasons) if reasons else "- New dependency added (reviewing for safety)"}
 
 Metadata:
 - Weekly downloads: {downloads if downloads else 'unknown'}
 - Repository URL: {meta.get('repository_url', 'none')}
 - Description: {meta.get('description', 'none')}
-- Created: {meta.get('created_at', 'unknown')}
 - Has install scripts: {meta.get('has_install_scripts', False)}
 - Maintainer count: {meta.get('maintainer_count', 'unknown')}
+{diff_section}
 
-Evaluate the risk. For new dependencies, consider whether the package is well-established and expected for the project type.
+Be precise. If the code diff shows normal development (bug fixes, features, docs), say so and rate as low risk.
+If you see actual malicious patterns in the diff, cite the specific code.
 
 Respond in this exact JSON format (no markdown, no backticks):
-{{"risk": "critical|high|medium|low", "additional_concerns": ["list of any additional concerns beyond the heuristic flags, or empty"], "recommendation": "one sentence recommendation"}}"""
+{{"risk": "critical|high|medium|low", "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence"}}"""
 
     try:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=300,
+            max_tokens=500,
         )
-        import json
         content = response.choices[0].message.content.strip()
         result = json.loads(content)
 
