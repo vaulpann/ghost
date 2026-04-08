@@ -2,6 +2,7 @@
 
 Thanks for your interest in contributing to Ghost! This guide will help you get started.
 
+
 ## Ways to Contribute
 
 - **Report bugs** -- Open an issue with steps to reproduce
