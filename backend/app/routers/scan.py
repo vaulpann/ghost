@@ -10,6 +10,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -281,6 +282,10 @@ def _scan_content_for_suspicious_patterns(content: str) -> list[dict]:
     return findings
 
 
+def _encode_npm_name(package_name: str) -> str:
+    return quote(package_name, safe="")
+
+
 async def _download_package_source(dep: Dependency) -> tuple[Path, Path]:
     temp_dir = create_temp_dir(prefix=f"ghost-scan-{dep.registry}-{dep.name.replace('/', '_')}-")
     dest_dir = temp_dir / "src"
@@ -307,7 +312,7 @@ async def _npm_extended_metadata(client: httpx.AsyncClient, name: str, version: 
         "maintainer_count": 0,
     }
     try:
-        url = f"{NPM_REGISTRY}/{name}"
+        url = f"{NPM_REGISTRY}/{_encode_npm_name(name)}"
         resp = await client.get(url)
         if resp.status_code != 200:
             return meta
@@ -389,7 +394,7 @@ async def _verify_package_name(
             # npm scoped packages start with @
             if "/" in dep.name and not dep.name.startswith("@"):
                 return False, f"'{dep.name}' looks like a path, not an npm package", meta
-            resp = await http_client.get(f"{NPM_REGISTRY}/{dep.name}")
+            resp = await http_client.get(f"{NPM_REGISTRY}/{_encode_npm_name(dep.name)}")
             if resp.status_code == 404:
                 return False, f"Package '{dep.name}' not found on npm", meta
             if resp.status_code == 200:
@@ -534,7 +539,7 @@ async def _get_version_diff(dep: Dependency, meta: dict) -> str | None:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 if dep.registry == "npm":
-                    resp = await client.get(f"{NPM_REGISTRY}/{dep.name}")
+                    resp = await client.get(f"{NPM_REGISTRY}/{_encode_npm_name(dep.name)}")
                     if resp.status_code == 200:
                         data = resp.json()
                         times = data.get("time", {})
