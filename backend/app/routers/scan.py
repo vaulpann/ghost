@@ -104,6 +104,54 @@ def _is_typosquat(name: str, registry: str) -> str | None:
     return None
 
 
+def _dedupe_reasons(reasons: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for reason in reasons:
+        normalized = reason.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(normalized)
+    return deduped
+
+
+def _reason_is_metadata_only(reason: str) -> bool:
+    lowered = reason.lower()
+    metadata_markers = (
+        "weekly downloads",
+        "download count",
+        "repository url",
+        "repository",
+        "source repository",
+        "maintainer",
+        "created ",
+        "canonical name",
+        "not found on",
+        "version '",
+        "transparency",
+        "trustworthiness",
+        "similar to popular package",
+        "typosquat",
+    )
+    return any(marker in lowered for marker in metadata_markers)
+
+
+def _reason_is_install_script_only(reason: str) -> bool:
+    lowered = reason.lower()
+    return "install lifecycle scripts" in lowered or "install scripts" in lowered
+
+
+def _reason_is_weak_signal(reason: str) -> bool:
+    lowered = reason.lower()
+    weak_markers = (
+        "single maintainer",
+        "maintainer may indicate potential risk",
+        "new dependency with a single maintainer",
+    )
+    return any(marker in lowered for marker in weak_markers)
+
+
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
@@ -126,6 +174,7 @@ class Finding(BaseModel):
     package: str
     registry: str
     version: str | None
+    previous_version: str | None = None
     risk: str  # "critical", "high", "medium", "low"
     reasons: list[str]
     recommendation: str
@@ -231,32 +280,41 @@ async def _pypi_extended_metadata(client: httpx.AsyncClient, name: str) -> dict:
 async def _verify_package_name(
     dep: Dependency,
     http_client: httpx.AsyncClient,
-) -> tuple[bool, str | None]:
+) -> tuple[bool, str | None, dict]:
     """Verify the package actually exists on the claimed registry.
     Returns (exists, canonical_name). Catches wrong-registry lookups."""
+    meta: dict = {}
     try:
         if dep.registry == "npm":
             # npm scoped packages start with @
             if "/" in dep.name and not dep.name.startswith("@"):
-                return False, f"'{dep.name}' looks like a path, not an npm package"
+                return False, f"'{dep.name}' looks like a path, not an npm package", meta
             resp = await http_client.get(f"{NPM_REGISTRY}/{dep.name}")
             if resp.status_code == 404:
-                return False, f"Package '{dep.name}' not found on npm"
+                return False, f"Package '{dep.name}' not found on npm", meta
             if resp.status_code == 200:
                 data = resp.json()
-                return True, data.get("name", dep.name)
+                requested_version = dep.version
+                available_versions = data.get("versions", {})
+                if requested_version and requested_version != "latest":
+                    meta["version_exists"] = requested_version in available_versions
+                return True, data.get("name", dep.name), meta
         elif dep.registry == "pypi":
             if "/" in dep.name:
-                return False, f"'{dep.name}' looks like a path, not a PyPI package"
+                return False, f"'{dep.name}' looks like a path, not a PyPI package", meta
             resp = await http_client.get(f"{PYPI_API}/{dep.name}/json")
             if resp.status_code == 404:
-                return False, f"Package '{dep.name}' not found on PyPI"
+                return False, f"Package '{dep.name}' not found on PyPI", meta
             if resp.status_code == 200:
                 data = resp.json()
-                return True, data.get("info", {}).get("name", dep.name)
+                requested_version = dep.version
+                releases = data.get("releases", {})
+                if requested_version and requested_version != "latest":
+                    meta["version_exists"] = requested_version in releases
+                return True, data.get("info", {}).get("name", dep.name), meta
     except Exception:
         pass
-    return True, None  # Can't verify, assume ok
+    return True, None, meta  # Can't verify, assume ok
 
 
 async def _heuristic_check(
@@ -272,28 +330,37 @@ async def _heuristic_check(
     needs_ai = False
 
     # Step 1: Verify the package actually exists with this name on this registry
-    exists, canonical_name = await _verify_package_name(dep, http_client)
+    exists, canonical_name, verification_meta = await _verify_package_name(dep, http_client)
     if not exists:
         return [canonical_name or f"Package '{dep.name}' not found on {dep.registry}"], meta, False
+    meta.update(verification_meta)
 
     # If canonical name differs from what was sent, note it
     if canonical_name and canonical_name != dep.name:
         meta["canonical_name"] = canonical_name
+        reasons.append(f"Registry canonical name is '{canonical_name}', not '{dep.name}'")
+        needs_ai = True
+
+    if meta.get("version_exists") is False:
+        return [f"Requested version '{dep.version}' was not found on {dep.registry}"], meta, False
 
     try:
         # Step 2: Fetch metadata
         if dep.registry == "npm":
-            pkg_meta = await npm_client.get_package_metadata(dep.name)
-            ext = await _npm_extended_metadata(http_client, dep.name, dep.version)
+            lookup_name = canonical_name or dep.name
+            pkg_meta = await npm_client.get_package_metadata(lookup_name)
+            ext = await _npm_extended_metadata(http_client, lookup_name, dep.version)
         else:
-            pkg_meta = await pypi_client.get_package_metadata(dep.name)
-            ext = await _pypi_extended_metadata(http_client, dep.name)
+            lookup_name = canonical_name or dep.name
+            pkg_meta = await pypi_client.get_package_metadata(lookup_name)
+            ext = await _pypi_extended_metadata(http_client, lookup_name)
 
         downloads = pkg_meta.weekly_downloads
         meta.update({
             "weekly_downloads": downloads,
             "repository_url": pkg_meta.repository_url,
             "description": pkg_meta.description,
+            "canonical_name": canonical_name or dep.name,
             **ext,
         })
 
@@ -439,19 +506,20 @@ async def _inspect_new_package(dep: Dependency) -> str | None:
 
         # Prioritize files to inspect: install scripts, entry points, and small JS/PY files
         priority_files = []
-        for f in files:
-            name_lower = f.lower()
+        for file_info in files:
+            rel_path = file_info["path"] if isinstance(file_info, dict) else str(file_info)
+            name_lower = rel_path.lower()
             # Install hooks, entry points, setup files
             if any(k in name_lower for k in [
                 "preinstall", "postinstall", "install.js", "install.sh",
-                "setup.py", "setup.cfg", "__init__.py",
+                "setup.py", "setup.cfg", "pyproject.toml", "__init__.py",
                 "index.js", "index.mjs", "main.js", "cli.js",
                 "bin/", ".bin/",
             ]):
-                priority_files.insert(0, f)  # High priority at front
+                priority_files.insert(0, rel_path)  # High priority at front
             # Source files (cap at reasonable number)
             elif name_lower.endswith((".js", ".mjs", ".cjs", ".py", ".sh", ".bat")):
-                priority_files.append(f)
+                priority_files.append(rel_path)
 
         # Read up to 8 key files
         file_contents = []
@@ -466,7 +534,8 @@ async def _inspect_new_package(dep: Dependency) -> str | None:
                     scan = scan_for_suspicious_patterns(full_path)
                     if scan and "error" not in scan:
                         scan_data = json.loads(scan) if isinstance(scan, str) else scan
-                        if scan_data.get("total_findings", 0) > 0:
+                        findings = scan_data.get("findings", [])
+                        if isinstance(findings, list) and findings:
                             scan_results.append(f"Patterns in {fpath}: {json.dumps(scan_data.get('findings', []))}")
 
         if not file_contents:
@@ -529,7 +598,10 @@ async def _ai_analyze(
     downloads = meta.get('weekly_downloads')
     dl_context = ""
     if downloads and downloads > 100000:
-        dl_context = f"\nIMPORTANT: This is a POPULAR package ({downloads:,} weekly downloads). Popular packages are HIGH-VALUE TARGETS for account takeover attacks (e.g., ua-parser-js, event-stream, coa). Do NOT dismiss concerns just because it's popular."
+        dl_context = (
+            f"\nPopularity context: This package has approximately {downloads:,} weekly downloads. "
+            "Popularity is relevant context, but it is NOT evidence of compromise by itself and it is NOT evidence of safety by itself."
+        )
 
     code_section = ""
     if source_inspection:
@@ -571,6 +643,7 @@ Analyze the actual code changes above. Look for:
 Package: {dep.name}
 Registry: {dep.registry}
 Version: {dep.version or "latest"}
+Previous version: {dep.previous_version or "none"}
 Is new dependency: {dep.is_new}
 {dl_context}
 
@@ -578,6 +651,7 @@ Heuristic flags:
 {chr(10).join(f"- {r}" for r in reasons) if reasons else "- New dependency added (reviewing for safety)"}
 
 Metadata:
+- Canonical registry name: {meta.get('canonical_name', dep.name)}
 - Weekly downloads: {downloads if downloads else 'unknown'}
 - Repository URL: {meta.get('repository_url', 'none')}
 - Description: {meta.get('description', 'none')}
@@ -585,11 +659,17 @@ Metadata:
 - Maintainer count: {meta.get('maintainer_count', 'unknown')}
 {code_section}
 
-Be precise. If the code diff shows normal development (bug fixes, features, docs), say so and rate as low risk.
-If you see actual malicious patterns in the diff, cite the specific code.
+Be precise and conservative:
+- HIGH or CRITICAL requires concrete suspicious code behavior or a strongly suspicious diff/source artifact.
+- Metadata alone (missing repo URL, low maintainer count, new package, popularity, low downloads) is not enough for HIGH or CRITICAL.
+- If the code diff/source looks like normal development or normal package bootstrap code, rate LOW even if some metadata is imperfect.
+- For popular legitimate packages, do not over-escalate without concrete code evidence.
+- Install scripts alone are common in build tools and binary-distribution packages like esbuild, sharp, and similar packages. Without suspicious domains, obfuscation, credential access, or unexpected behavior, keep them LOW.
+- A single maintainer by itself is a weak signal and should not be surfaced as a meaningful concern for established packages unless combined with stronger validated evidence.
+- Cite the specific code behavior when you claim meaningful risk.
 
 Respond in this exact JSON format (no markdown, no backticks):
-{{"risk": "critical|high|medium|low", "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence"}}"""
+{{"risk": "critical|high|medium|low", "has_concrete_evidence": true, "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence"}}"""
 
     try:
         response = await client.chat.completions.create(
@@ -604,10 +684,21 @@ Respond in this exact JSON format (no markdown, no backticks):
         risk = result.get("risk", "medium")
         if risk not in ("critical", "high", "medium", "low"):
             risk = "medium"
+        has_concrete_evidence = bool(result.get("has_concrete_evidence"))
+
+        if risk in ("critical", "high") and not has_concrete_evidence:
+            risk = "medium" if reasons else "low"
 
         additional = result.get("additional_concerns", [])
         if additional:
             reasons = reasons + [c for c in additional if c]
+        reasons = _dedupe_reasons(reasons)
+
+        if risk == "medium" and not has_concrete_evidence and reasons and all(
+            _reason_is_metadata_only(reason) or _reason_is_install_script_only(reason)
+            for reason in reasons
+        ):
+            risk = "low"
 
         recommendation = result.get("recommendation", "Review this dependency before merging")
         return risk, reasons, recommendation
@@ -667,10 +758,14 @@ async def scan_dependencies(req: ScanRequest):
 
     # Heuristic-only findings (not serious enough for AI)
     for dep, reasons, meta in heuristic_only:
+        reasons = _dedupe_reasons(reasons)
+        if not reasons:
+            continue
         findings.append(Finding(
             package=dep.name,
             registry=dep.registry,
             version=dep.version,
+            previous_version=dep.previous_version,
             risk="low",
             reasons=reasons,
             recommendation="No action required, noted for awareness",
@@ -695,10 +790,19 @@ async def scan_dependencies(req: ScanRequest):
             else:
                 risk, final_reasons, recommendation = ai_result
 
+            final_reasons = _dedupe_reasons(final_reasons)
+            if risk == "low" and not final_reasons:
+                continue
+            if risk == "low" and final_reasons and all(
+                _reason_is_weak_signal(reason) for reason in final_reasons
+            ):
+                continue
+
             findings.append(Finding(
                 package=dep.name,
                 registry=dep.registry,
                 version=dep.version,
+                previous_version=dep.previous_version,
                 risk=risk,
                 reasons=final_reasons,
                 recommendation=recommendation,

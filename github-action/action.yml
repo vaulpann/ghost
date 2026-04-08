@@ -14,7 +14,7 @@ inputs:
   fail-on:
     description: "Minimum severity to fail the check (critical, high, medium, none)"
     required: false
-    default: "critical"
+    default: "high"
   token:
     description: "GitHub token for posting PR comments"
     required: false
