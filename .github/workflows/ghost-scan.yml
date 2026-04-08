@@ -19,8 +19,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: ./github-action
+      - uses: vaulpann/ghost/github-action@main
         with:
           fail-on: high
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
