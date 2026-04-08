@@ -1,0 +1,26 @@
+name: Ghost Supply Chain Scan
+on:
+  pull_request:
+    paths:
+      - "frontend/package-lock.json"
+      - "frontend/yarn.lock"
+      - "frontend/pnpm-lock.yaml"
+      - "backend/requirements.txt"
+      - "backend/pyproject.toml"
+      - "audit-worker/requirements.txt"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./github-action
+        with:
+          fail-on: high
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
