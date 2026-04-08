@@ -422,7 +422,7 @@ async function callGhostScan(dependencies) {
     name: d.name,
     version: d.version || null,
     previous_version: d.previous_version || null,
-    registry: d.ecosystem === "python" ? "pypi" : "npm",
+    registry: d.ecosystem === "python" || d.ecosystem === "pypi" ? "pypi" : "npm",
     is_new: d.is_new || false,
   }));
 
