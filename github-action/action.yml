@@ -1,10 +1,10 @@
-name: "Ghost Supply Chain Scanner"
-description: "Scan your dependencies for supply chain attacks, typosquats, and malicious packages"
-author: "Validia / FrontierSec"
+name: "Ghost Supply Chain Scan"
+description: "Analyze new and updated npm and Python dependencies for supply chain risk in pull requests"
+author: "Validia"
 
 branding:
   icon: "shield"
-  color: "purple"
+  color: "blue"
 
 inputs:
   api-url:

@@ -1,28 +1,38 @@
-# Ghost Supply Chain Scanner
+# Ghost Supply Chain Scan
 
-A GitHub Action that scans your project's dependencies for supply chain attacks, typosquats, and malicious packages using the [Ghost](https://ghost.validia.ai) threat intelligence API.
+Ghost scans pull requests for risky dependency changes. It detects new npm and Python dependencies, reviews version updates, and posts a per-package analysis summary directly on the PR.
 
-## Features
+This directory is structured to be copied into its own public repository, such as `vaulpann/ghost-action`, and published from there.
 
-- Detects new and changed dependencies in pull requests
-- Supports npm, yarn, pnpm, pip, and poetry
-- Posts clean PR comments with findings (updates in place, no duplicates)
-- Configurable failure thresholds
-- Monorepo support (recursive lock file detection)
-- Zero external dependencies (runs on Node.js built-ins only)
+## What It Does
 
-## Quick Start
+- Detects changed dependency lockfiles recursively in monorepos
+- Scans only new or updated dependencies
+- Supports npm (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`) and Python (`requirements.txt`, `Pipfile.lock`, `poetry.lock`)
+- Reviews new packages by pulling package source
+- Reviews updates by diffing the previous and new package versions
+- Posts a PR comment with a 1-2 sentence analysis for each changed dependency
+- Fails the check only when results meet your configured severity threshold
+
+## Usage
 
 ```yaml
-# .github/workflows/ghost-scan.yml
 name: Ghost Supply Chain Scan
-on: [pull_request]
+
+on:
+  pull_request:
+
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: vaulpann/ghost/github-action@main
+        with:
+          fetch-depth: 0
+      - uses: vaulpann/ghost-action@v1
         with:
           fail-on: high
 ```
@@ -30,70 +40,45 @@ jobs:
 ## Inputs
 
 | Input | Description | Default |
-|-------|-------------|---------|
+|---|---|---|
 | `api-url` | Ghost API endpoint | `https://ghost-api-495743911277.us-central1.run.app` |
-| `fail-on` | Minimum severity to fail the check: `critical`, `high`, `medium`, `none` | `critical` |
-| `token` | GitHub token for PR comments | `${{ github.token }}` |
+| `fail-on` | Minimum severity that fails the job: `critical`, `high`, `medium`, `none` | `high` |
+| `token` | GitHub token used to update PR comments | `${{ github.token }}` |
 
-## How It Works
+## Behavior
 
-1. **Detects lock files** in your repository (up to 3 directories deep)
-2. **Parses dependencies** from package-lock.json, yarn.lock, pnpm-lock.yaml, requirements.txt, Pipfile.lock, or poetry.lock
-3. **Diffs against base branch** (on PRs) to identify new or changed dependencies
-4. **Sends dependencies to Ghost API** for threat analysis
-5. **Reports findings** via GitHub Actions summary and PR comments
+- If a PR does not change any supported dependency files, Ghost exits cleanly.
+- If supported lockfiles changed but no dependencies changed relative to the base branch, Ghost reports `No new or changed dependencies to scan.`
+- If dependencies changed, Ghost posts a PR comment with one row per changed dependency.
+- Clean dependencies still get a short analysis summary so reviewers can see that code or version diff inspection actually ran.
+- The job fails only when at least one result meets the `fail-on` threshold.
 
-## Supported Ecosystems
+## Example Output
 
-| Ecosystem | Lock File |
-|-----------|-----------|
-| npm | `package-lock.json` |
-| yarn | `yarn.lock` |
-| pnpm | `pnpm-lock.yaml` |
-| pip | `requirements.txt` |
-| pipenv | `Pipfile.lock` |
-| poetry | `poetry.lock` |
+```md
+## 🔍 Ghost Supply Chain Scan
 
-## Examples
+0 concerns found in 2 changed dependencies
 
-### Fail on high severity or above
-
-```yaml
-- uses: vaulpann/ghost/github-action@main
-  with:
-    fail-on: high
+| Package | Version | Risk | Analysis |
+|---------|---------|------|----------|
+| lodash | 4.17.21 | 🔵 Low | The lodash package version 4.17.21 does not contain any install scripts, obfuscated code, or suspicious outbound network calls. |
+| zod | 3.23.8 -> 3.25.76 | 🔵 Low | The changes in the package primarily involve updates to the license and README files, with no new install scripts, obfuscated code, or suspicious network calls. |
 ```
 
-### Never fail, just report
+## Supported Files
 
-```yaml
-- uses: vaulpann/ghost/github-action@main
-  with:
-    fail-on: none
-```
+- `package-lock.json`
+- `yarn.lock`
+- `pnpm-lock.yaml`
+- `requirements.txt`
+- `Pipfile.lock`
+- `poetry.lock`
 
-### Custom API endpoint (self-hosted Ghost)
+## Publishing
 
-```yaml
-- uses: vaulpann/ghost/github-action@main
-  with:
-    api-url: https://ghost.internal.company.com
-```
+This action is intended to be published from its own repository. See [PUBLISHING.md](./PUBLISHING.md) for the exact repo layout and release steps.
 
-## PR Comment
+## License
 
-When issues are found, the action posts a comment on the PR:
-
-> ## Ghost Supply Chain Scan
->
-> **1 issue found** in 45 dependencies
->
-> | Package | Version | Risk | Issue |
-> |---------|---------|------|-------|
-> | evil-pkg | 1.0.0 | Critical | Only 3 weekly downloads, postinstall script |
-
-If no issues are found, only a green check appears in the Actions summary -- no noisy comments.
-
----
-
-*Powered by [Ghost](https://ghost.validia.ai) -- Supply Chain Threat Intelligence by Validia*
+MIT
