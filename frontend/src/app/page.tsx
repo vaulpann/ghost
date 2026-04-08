@@ -5,7 +5,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://ghost-api-495743911277.us-central1.run.app";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://ghostapi.validia.ai";
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "ssr";
