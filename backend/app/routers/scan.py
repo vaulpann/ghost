@@ -419,12 +419,91 @@ async def _get_version_diff(dep: Dependency, meta: dict) -> str | None:
         return None
 
 
+async def _inspect_new_package(dep: Dependency) -> str | None:
+    """Download a new dependency and inspect its key files for suspicious code.
+    Returns a summary of the package contents or None on failure."""
+    from app.services.analysis.agent import download_and_list_files, read_file_content, scan_for_suspicious_patterns
+    from app.utils.tarball import create_temp_dir, cleanup_temp_dir
+
+    try:
+        result_json = await download_and_list_files(dep.name, dep.version or "latest", dep.registry)
+        result = json.loads(result_json)
+        if "error" in result:
+            return None
+
+        extracted_path = result.get("extracted_path", "")
+        files = result.get("files", [])
+        install_scripts = result.get("install_scripts", "none")
+
+        # Prioritize files to inspect: install scripts, entry points, and small JS/PY files
+        priority_files = []
+        for f in files:
+            name_lower = f.lower()
+            # Install hooks, entry points, setup files
+            if any(k in name_lower for k in [
+                "preinstall", "postinstall", "install.js", "install.sh",
+                "setup.py", "setup.cfg", "__init__.py",
+                "index.js", "index.mjs", "main.js", "cli.js",
+                "bin/", ".bin/",
+            ]):
+                priority_files.insert(0, f)  # High priority at front
+            # Source files (cap at reasonable number)
+            elif name_lower.endswith((".js", ".mjs", ".cjs", ".py", ".sh", ".bat")):
+                priority_files.append(f)
+
+        # Read up to 8 key files
+        file_contents = []
+        scan_results = []
+        for fpath in priority_files[:8]:
+            full_path = f"{extracted_path}/{fpath}" if not fpath.startswith(extracted_path) else fpath
+            content = read_file_content(full_path, max_lines=150)
+            if content and "error" not in content:
+                file_contents.append(f"--- {fpath} ---\n{content}")
+                # Run pattern scan on suspicious-looking files
+                if any(k in fpath.lower() for k in ["install", "setup", "index", "main", "cli", "bin"]):
+                    scan = scan_for_suspicious_patterns(full_path)
+                    if scan and "error" not in scan:
+                        scan_data = json.loads(scan) if isinstance(scan, str) else scan
+                        if scan_data.get("total_findings", 0) > 0:
+                            scan_results.append(f"Patterns in {fpath}: {json.dumps(scan_data.get('findings', []))}")
+
+        if not file_contents:
+            return None
+
+        summary_parts = [
+            f"Package: {dep.name}@{dep.version or 'latest'} ({dep.registry})",
+            f"Total files: {result.get('total_files', '?')}",
+            f"Install scripts: {install_scripts}",
+            "",
+            "KEY FILE CONTENTS:",
+            "\n\n".join(file_contents),
+        ]
+
+        if scan_results:
+            summary_parts.append("\nPATTERN SCAN RESULTS:")
+            summary_parts.extend(scan_results)
+
+        full_summary = "\n".join(summary_parts)
+        # Cap at 15K
+        if len(full_summary) > 15000:
+            full_summary = full_summary[:15000] + "\n\n[... truncated ...]"
+
+        return full_summary
+
+    except Exception:
+        logger.debug("Failed to inspect new package %s", dep.name, exc_info=True)
+        return None
+
+
 async def _ai_analyze(
     dep: Dependency,
     reasons: list[str],
     meta: dict,
 ) -> tuple[str, list[str], str]:
-    """Analyze a flagged dependency using OpenAI with actual version diff.
+    """Analyze a dependency using OpenAI with actual code inspection.
+
+    For version changes: downloads both versions, diffs the code.
+    For new deps: downloads the package, inspects key files.
 
     Returns (risk_level, updated_reasons, recommendation).
     """
@@ -432,8 +511,16 @@ async def _ai_analyze(
         risk = "high" if len(reasons) >= 3 else "medium"
         return risk, reasons, "Review this dependency manually before merging"
 
-    # Get the actual code diff between versions
-    diff_text = await _get_version_diff(dep, meta)
+    # Get actual code to analyze
+    diff_text = None
+    source_inspection = None
+
+    if dep.is_new:
+        # New dependency — download and inspect the actual source
+        source_inspection = await _inspect_new_package(dep)
+    # Always try version diff (for version changes, or even for new deps if we can find a prior version)
+    if not source_inspection:
+        diff_text = await _get_version_diff(dep, meta)
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -442,9 +529,25 @@ async def _ai_analyze(
     if downloads and downloads > 100000:
         dl_context = f"\nIMPORTANT: This is a POPULAR package ({downloads:,} weekly downloads). Popular packages are HIGH-VALUE TARGETS for account takeover attacks (e.g., ua-parser-js, event-stream, coa). Do NOT dismiss concerns just because it's popular."
 
-    diff_section = ""
-    if diff_text:
-        diff_section = f"""
+    code_section = ""
+    if source_inspection:
+        code_section = f"""
+
+SOURCE CODE INSPECTION (key files from this package):
+```
+{source_inspection}
+```
+
+Analyze the actual source code above. Look for:
+- Install scripts (preinstall/postinstall) that download or execute anything
+- Obfuscated code (base64, hex encoding, eval, Function constructor)
+- Outbound network calls to hardcoded URLs/IPs
+- Credential/token/key/cookie access patterns
+- File I/O that reads sensitive paths (.ssh, .npmrc, .env, /etc/passwd)
+- Code that doesn't match the package's stated purpose
+- Minified/packed code that hides functionality"""
+    elif diff_text:
+        code_section = f"""
 
 VERSION DIFF (what actually changed in the code):
 ```
@@ -459,7 +562,7 @@ Analyze the actual code changes above. Look for:
 - New file I/O that reads sensitive paths (.ssh, .npmrc, .env)
 - Code that doesn't match the package's stated purpose"""
     else:
-        diff_section = "\n(Could not retrieve version diff — evaluate based on metadata only)"
+        code_section = "\n(Could not retrieve source code or version diff — evaluate based on metadata only)"
 
     prompt = f"""You are a supply-chain security analyst. Analyze this dependency for signs of compromise or malicious behavior.
 
@@ -478,7 +581,7 @@ Metadata:
 - Description: {meta.get('description', 'none')}
 - Has install scripts: {meta.get('has_install_scripts', False)}
 - Maintainer count: {meta.get('maintainer_count', 'unknown')}
-{diff_section}
+{code_section}
 
 Be precise. If the code diff shows normal development (bug fixes, features, docs), say so and rate as low risk.
 If you see actual malicious patterns in the diff, cite the specific code.
