@@ -422,7 +422,7 @@ async function callGhostScan(dependencies) {
     name: d.name,
     version: d.version || null,
     previous_version: d.previous_version || null,
-    registry: d.ecosystem === "python" ? "pypi" : "npm",
+    registry: d.ecosystem === "python" || d.ecosystem === "pypi" ? "pypi" : "npm",
     is_new: d.is_new || false,
   }));
 
@@ -549,19 +549,20 @@ function riskLabel(level) {
 
 function buildSummary(scanResult, stats) {
   const findings = scanResult.findings || [];
+  const results = scanResult.results || findings;
   const totalDeps = stats.total;
   const totalNew = stats.new;
   const totalUpdated = stats.updated;
   const total_checked = scanResult.summary?.checked || scanResult.total_checked || totalDeps;
   const total_clean = scanResult.summary?.clean || scanResult.total_clean || (total_checked - findings.length);
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
-  for (const finding of findings) {
+  for (const finding of results) {
     const risk = finding.risk || finding.risk_level;
     if (risk && severityCounts[risk] != null) severityCounts[risk] += 1;
   }
   const lines = [];
 
-  if (findings.length === 0) {
+  if (results.length === 0) {
     lines.push("## \u2705 Ghost Supply Chain Scan");
     lines.push("");
     lines.push(`**No issues found** in ${totalDeps} changed dependencies`);
@@ -572,12 +573,12 @@ function buildSummary(scanResult, stats) {
     lines.push("");
     lines.push(`**${findings.length} concern${findings.length !== 1 ? "s" : ""} found** in ${totalDeps} changed dependencies`);
     lines.push("");
-    lines.push("| Package | Version | Risk | Reason |");
-    lines.push("|---------|---------|------|--------|");
+    lines.push("| Package | Version | Risk | Analysis |");
+    lines.push("|---------|---------|------|----------|");
 
-    for (const f of findings) {
+    for (const f of results) {
       const risk = f.risk || f.risk_level || "unknown";
-      const issue = f.recommendation || (f.reasons && f.reasons[0]) || f.summary || "";
+      const issue = f.summary || f.recommendation || (f.reasons && f.reasons[0]) || "";
       const emoji = riskEmoji(risk);
       const pkgName = f.registry_url ? `[${f.package}](${f.registry_url})` : (f.package || "?");
       const dl = f.weekly_downloads != null ? ` (${Number(f.weekly_downloads).toLocaleString()}/wk)` : "";

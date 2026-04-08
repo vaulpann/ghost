@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
@@ -12,13 +13,18 @@ logger = logging.getLogger(__name__)
 NPM_REGISTRY = "https://registry.npmjs.org"
 
 
+def _encode_package_name(package_name: str) -> str:
+    return quote(package_name, safe="")
+
+
 class NpmClient(RegistryClient):
     def __init__(self):
         self._client = httpx.AsyncClient(timeout=30.0)
 
     async def get_latest_version(self, package_name: str) -> VersionInfo:
         """Lightweight check — only fetches dist-tags and the latest version metadata."""
-        url = f"{NPM_REGISTRY}/{package_name}"
+        encoded_name = _encode_package_name(package_name)
+        url = f"{NPM_REGISTRY}/{encoded_name}"
         resp = await self._client.get(
             url, headers={"Accept": "application/vnd.npm.install-v1+json"}
         )
@@ -36,7 +42,8 @@ class NpmClient(RegistryClient):
         )
 
     async def get_version_info(self, package_name: str, version: str) -> VersionInfo:
-        url = f"{NPM_REGISTRY}/{package_name}/{version}"
+        encoded_name = _encode_package_name(package_name)
+        url = f"{NPM_REGISTRY}/{encoded_name}/{quote(version, safe='')}"
         resp = await self._client.get(url)
         resp.raise_for_status()
         data = resp.json()
@@ -55,7 +62,8 @@ class NpmClient(RegistryClient):
         )
 
     async def get_package_metadata(self, package_name: str) -> PackageMetadata:
-        url = f"{NPM_REGISTRY}/{package_name}"
+        encoded_name = _encode_package_name(package_name)
+        url = f"{NPM_REGISTRY}/{encoded_name}"
         resp = await self._client.get(url)
         resp.raise_for_status()
         data = resp.json()
@@ -85,7 +93,8 @@ class NpmClient(RegistryClient):
         if not info.tarball_url:
             raise ValueError(f"No tarball URL for {package_name}@{version}")
 
-        tmp = create_temp_dir(prefix=f"ghost-npm-{package_name}-{version}-")
+        safe_name = package_name.replace("/", "_")
+        tmp = create_temp_dir(prefix=f"ghost-npm-{safe_name}-{version}-")
         try:
             tarball_path = tmp / "package.tgz"
             await download_file(info.tarball_url, tarball_path)
@@ -98,7 +107,8 @@ class NpmClient(RegistryClient):
 
     async def _get_weekly_downloads(self, package_name: str) -> int | None:
         try:
-            url = f"https://api.npmjs.org/downloads/point/last-week/{package_name}"
+            encoded_name = _encode_package_name(package_name)
+            url = f"https://api.npmjs.org/downloads/point/last-week/{encoded_name}"
             resp = await self._client.get(url)
             if resp.status_code == 200:
                 return resp.json().get("downloads")

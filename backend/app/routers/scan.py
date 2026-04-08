@@ -1,11 +1,16 @@
 """POST /api/v1/scan — analyze dependencies for supply chain threats."""
 
 import asyncio
+import difflib
 import json
 import logging
+import os
+import re
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -15,6 +20,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.services.registry.npm import NpmClient, NPM_REGISTRY
 from app.services.registry.pypi import PyPIClient, PYPI_API
+from app.utils.tarball import cleanup_temp_dir, create_temp_dir
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +188,22 @@ class Finding(BaseModel):
     weekly_downloads: int | None = None
 
 
+class PackageResult(BaseModel):
+    package: str
+    registry: str
+    version: str | None
+    previous_version: str | None = None
+    is_new: bool = False
+    risk: str  # "critical", "high", "medium", "low"
+    summary: str
+    reasons: list[str]
+    recommendation: str
+    registry_url: str | None = None
+    weekly_downloads: int | None = None
+    analyzed_code: bool = False
+    analysis_basis: str = "metadata_only"
+
+
 class ScanSummary(BaseModel):
     total_deps: int
     checked: int
@@ -191,8 +213,91 @@ class ScanSummary(BaseModel):
 
 class ScanResponse(BaseModel):
     findings: list[Finding]
+    results: list[PackageResult]
     summary: ScanSummary
     scan_id: str
+
+
+def _make_summary(
+    dep: Dependency,
+    risk: str,
+    reasons: list[str],
+    analyzed_code: bool,
+    analysis_basis: str,
+    recommendation: str,
+) -> str:
+    subject = (
+        f"New dependency {dep.name}@{dep.version or 'latest'}"
+        if dep.is_new
+        else f"Update {dep.name} {dep.previous_version or '?'} -> {dep.version or '?'}"
+    )
+
+    if risk in ("critical", "high"):
+        evidence = reasons[0] if reasons else recommendation
+        return f"{subject} looks risky. Evidence: {evidence}."
+
+    if reasons:
+        basis = (
+            "I inspected the package source"
+            if analysis_basis == "package_source"
+            else "I inspected the version diff"
+            if analysis_basis == "version_diff"
+            else "I validated registry metadata"
+        )
+        return f"{subject} does not look blocking, but {basis.lower()} and found: {reasons[0]}."
+
+    if analyzed_code:
+        if analysis_basis == "package_source":
+            return f"{subject} looks normal after inspecting key package source files. No suspicious code patterns stood out."
+        if analysis_basis == "version_diff":
+            return f"{subject} looks normal after reviewing the published version diff. No suspicious code changes stood out."
+
+    return f"{subject} looks normal after registry validation. No meaningful supply-chain concerns were identified."
+
+
+def _scan_content_for_suspicious_patterns(content: str) -> list[dict]:
+    patterns = [
+        (r'\b(fetch\(|http\.request|https\.request|XMLHttpRequest|net\.connect|urllib\.request)', "NETWORK", "Outbound network request"),
+        (r'\b(child_process|subprocess|os\.system|os\.popen|exec\(|spawn\()', "PROCESS_EXEC", "Process/shell execution"),
+        (r'\b(eval\s*\(|new\s+Function\s*\(|compile\s*\()', "DYNAMIC_EXEC", "Dynamic code execution"),
+        (r'(Buffer\.from\([^)]+base64|atob\s*\(|b64decode|base64\.b64decode)', "BASE64_DECODE", "Runtime base64 decoding"),
+        (r'(process\.env|os\.environ|os\.getenv)\s*[\[.(]', "ENV_READ", "Environment variable access"),
+        (r'(/etc/passwd|\.ssh/|\.aws/|\.npmrc|\.pypirc|\.netrc)', "SENSITIVE_PATH", "Sensitive file path access"),
+        (r'(preinstall|postinstall)\s*["\']?\s*:', "INSTALL_HOOK", "Install lifecycle hook"),
+        (r'(dns\.lookup|dns\.resolve|net\.createConnection|socket\.connect)', "RAW_NETWORK", "Raw network/DNS operation"),
+        (r'(wget\s|curl\s|requests\.get|urllib\.urlopen)', "HTTP_FETCH", "HTTP download operation"),
+    ]
+    findings: list[dict] = []
+    for pattern, category, description in patterns:
+        matches = list(re.finditer(pattern, content))
+        for m in matches[:3]:
+            start, end = max(0, m.start() - 100), min(len(content), m.end() + 100)
+            findings.append({
+                "category": category,
+                "description": description,
+                "line": content[:m.start()].count("\n") + 1,
+                "match": m.group(),
+                "context": content[start:end].strip(),
+            })
+    return findings
+
+
+def _encode_npm_name(package_name: str) -> str:
+    return quote(package_name, safe="")
+
+
+async def _download_package_source(dep: Dependency) -> tuple[Path, Path]:
+    temp_dir = create_temp_dir(prefix=f"ghost-scan-{dep.registry}-{dep.name.replace('/', '_')}-")
+    dest_dir = temp_dir / "src"
+    if dep.registry == "npm":
+        client = NpmClient()
+    elif dep.registry == "pypi":
+        client = PyPIClient()
+    else:
+        cleanup_temp_dir(temp_dir)
+        raise ValueError(f"Unsupported registry: {dep.registry}")
+    extracted = await client.download_version(dep.name, dep.version or "latest", str(dest_dir))
+    return temp_dir, Path(extracted)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +312,7 @@ async def _npm_extended_metadata(client: httpx.AsyncClient, name: str, version: 
         "maintainer_count": 0,
     }
     try:
-        url = f"{NPM_REGISTRY}/{name}"
+        url = f"{NPM_REGISTRY}/{_encode_npm_name(name)}"
         resp = await client.get(url)
         if resp.status_code != 200:
             return meta
@@ -289,7 +394,7 @@ async def _verify_package_name(
             # npm scoped packages start with @
             if "/" in dep.name and not dep.name.startswith("@"):
                 return False, f"'{dep.name}' looks like a path, not an npm package", meta
-            resp = await http_client.get(f"{NPM_REGISTRY}/{dep.name}")
+            resp = await http_client.get(f"{NPM_REGISTRY}/{_encode_npm_name(dep.name)}")
             if resp.status_code == 404:
                 return False, f"Package '{dep.name}' not found on npm", meta
             if resp.status_code == 200:
@@ -434,7 +539,7 @@ async def _get_version_diff(dep: Dependency, meta: dict) -> str | None:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 if dep.registry == "npm":
-                    resp = await client.get(f"{NPM_REGISTRY}/{dep.name}")
+                    resp = await client.get(f"{NPM_REGISTRY}/{_encode_npm_name(dep.name)}")
                     if resp.status_code == 200:
                         data = resp.json()
                         times = data.get("time", {})
@@ -469,40 +574,101 @@ async def _get_version_diff(dep: Dependency, meta: dict) -> str | None:
     if not prev_version:
         return None
 
-    # Use the existing diff tool
-    from app.services.analysis.agent import diff_package_versions
+    old_dep = Dependency(
+        name=dep.name,
+        version=prev_version,
+        previous_version=None,
+        registry=dep.registry,
+        is_new=False,
+    )
     try:
-        result_json = await diff_package_versions(dep.name, prev_version, dep.version, dep.registry)
-        result = json.loads(result_json)
-        if "error" in result:
+        old_temp, old_path = await _download_package_source(old_dep)
+        new_temp, new_path = await _download_package_source(dep)
+
+        diff_parts = []
+        all_files = set()
+        for root, _, files in os.walk(old_path):
+            for fname in files:
+                all_files.add(os.path.relpath(os.path.join(root, fname), old_path))
+        for root, _, files in os.walk(new_path):
+            for fname in files:
+                all_files.add(os.path.relpath(os.path.join(root, fname), new_path))
+
+        for rel in sorted(all_files):
+            old_file = old_path / rel
+            new_file = new_path / rel
+            try:
+                old_lines = old_file.read_text(errors="replace").splitlines() if old_file.exists() else []
+                new_lines = new_file.read_text(errors="replace").splitlines() if new_file.exists() else []
+            except Exception:
+                continue
+            if old_lines == new_lines:
+                continue
+            diff = "\n".join(
+                difflib.unified_diff(
+                    old_lines,
+                    new_lines,
+                    fromfile=f"a/{rel}",
+                    tofile=f"b/{rel}",
+                    lineterm="",
+                )
+            )
+            if diff:
+                diff_parts.append(diff)
+
+        diff_text = "\n\n".join(diff_parts)
+        if not diff_text:
             return None
-        diff_text = result.get("diff", "")
-        if not diff_text or diff_text == "No source code changes detected.":
-            return None
-        # Cap at 15K chars for the AI prompt
         if len(diff_text) > 15000:
             diff_text = diff_text[:15000] + "\n\n[... truncated ...]"
         return diff_text
     except Exception:
         logger.debug("Version diff failed for %s", dep.name, exc_info=True)
         return None
+    finally:
+        if 'old_temp' in locals():
+            cleanup_temp_dir(old_temp)
+        if 'new_temp' in locals():
+            cleanup_temp_dir(new_temp)
 
 
 async def _inspect_new_package(dep: Dependency) -> str | None:
     """Download a new dependency and inspect its key files for suspicious code.
     Returns a summary of the package contents or None on failure."""
-    from app.services.analysis.agent import download_and_list_files, read_file_content, scan_for_suspicious_patterns
-    from app.utils.tarball import create_temp_dir, cleanup_temp_dir
-
     try:
-        result_json = await download_and_list_files(dep.name, dep.version or "latest", dep.registry)
-        result = json.loads(result_json)
-        if "error" in result:
-            return None
+        temp_dir, root = await _download_package_source(dep)
+        files: list[dict] = []
+        install_scripts: list[str] = []
+        total_lines = 0
 
-        extracted_path = result.get("extracted_path", "")
-        files = result.get("files", [])
-        install_scripts = result.get("install_scripts", "none")
+        for fpath in sorted(root.rglob("*")):
+            if not fpath.is_file():
+                continue
+            rel = str(fpath.relative_to(root))
+            files.append({"path": rel, "size": fpath.stat().st_size})
+            fname = fpath.name
+
+            if fname in ("setup.py", "postinstall.js", "preinstall.js", "install.js"):
+                install_scripts.append(rel)
+            if fname == "package.json":
+                try:
+                    pkg = json.loads(fpath.read_text())
+                    for hook in ("preinstall", "postinstall", "install", "prepare"):
+                        if hook in pkg.get("scripts", {}):
+                            install_scripts.append(f"{rel} -> scripts.{hook}: {pkg['scripts'][hook]}")
+                except Exception:
+                    pass
+            if fname == "setup.py":
+                try:
+                    if "cmdclass" in fpath.read_text():
+                        install_scripts.append(f"{rel} -> has custom cmdclass")
+                except Exception:
+                    pass
+            if any(fname.endswith(ext) for ext in (".js", ".ts", ".py", ".mjs", ".cjs")):
+                try:
+                    total_lines += fpath.read_text(errors="replace").count("\n")
+                except Exception:
+                    pass
 
         # Prioritize files to inspect: install scripts, entry points, and small JS/PY files
         priority_files = []
@@ -525,26 +691,32 @@ async def _inspect_new_package(dep: Dependency) -> str | None:
         file_contents = []
         scan_results = []
         for fpath in priority_files[:8]:
-            full_path = f"{extracted_path}/{fpath}" if not fpath.startswith(extracted_path) else fpath
-            content = read_file_content(full_path, max_lines=150)
-            if content and "error" not in content:
+            full_path = root / fpath
+            if not full_path.exists():
+                continue
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            lines = content.split("\n")
+            if len(lines) > 150:
+                content = f"[showing first 150 of {len(lines)} lines]\n" + "\n".join(lines[:150])
+            if content:
                 file_contents.append(f"--- {fpath} ---\n{content}")
                 # Run pattern scan on suspicious-looking files
                 if any(k in fpath.lower() for k in ["install", "setup", "index", "main", "cli", "bin"]):
-                    scan = scan_for_suspicious_patterns(full_path)
-                    if scan and "error" not in scan:
-                        scan_data = json.loads(scan) if isinstance(scan, str) else scan
-                        findings = scan_data.get("findings", [])
-                        if isinstance(findings, list) and findings:
-                            scan_results.append(f"Patterns in {fpath}: {json.dumps(scan_data.get('findings', []))}")
+                    findings = _scan_content_for_suspicious_patterns(content)
+                    if findings:
+                        scan_results.append(f"Patterns in {fpath}: {json.dumps(findings)}")
 
         if not file_contents:
             return None
 
         summary_parts = [
             f"Package: {dep.name}@{dep.version or 'latest'} ({dep.registry})",
-            f"Total files: {result.get('total_files', '?')}",
-            f"Install scripts: {install_scripts}",
+            f"Total files: {len(files)}",
+            f"Total source lines: {total_lines}",
+            f"Install scripts: {install_scripts or 'none'}",
             "",
             "KEY FILE CONTENTS:",
             "\n\n".join(file_contents),
@@ -564,13 +736,16 @@ async def _inspect_new_package(dep: Dependency) -> str | None:
     except Exception:
         logger.debug("Failed to inspect new package %s", dep.name, exc_info=True)
         return None
+    finally:
+        if 'temp_dir' in locals():
+            cleanup_temp_dir(temp_dir)
 
 
 async def _ai_analyze(
     dep: Dependency,
     reasons: list[str],
     meta: dict,
-) -> tuple[str, list[str], str]:
+) -> tuple[str, list[str], str, str, bool, str | None]:
     """Analyze a dependency using OpenAI with actual code inspection.
 
     For version changes: downloads both versions, diffs the code.
@@ -580,7 +755,7 @@ async def _ai_analyze(
     """
     if not settings.openai_api_key:
         risk = "high" if len(reasons) >= 3 else "medium"
-        return risk, reasons, "Review this dependency manually before merging"
+        return risk, reasons, "Review this dependency manually before merging", "metadata_only", False, None
 
     # Get actual code to analyze
     diff_text = None
@@ -592,6 +767,8 @@ async def _ai_analyze(
     # Always try version diff (for version changes, or even for new deps if we can find a prior version)
     if not source_inspection:
         diff_text = await _get_version_diff(dep, meta)
+    analysis_basis = "package_source" if source_inspection else "version_diff" if diff_text else "metadata_only"
+    analyzed_code = analysis_basis in {"package_source", "version_diff"}
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -669,7 +846,7 @@ Be precise and conservative:
 - Cite the specific code behavior when you claim meaningful risk.
 
 Respond in this exact JSON format (no markdown, no backticks):
-{{"risk": "critical|high|medium|low", "has_concrete_evidence": true, "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence"}}"""
+{{"risk": "critical|high|medium|low", "has_concrete_evidence": true, "additional_concerns": ["specific findings from code analysis, or empty if clean"], "recommendation": "one sentence", "summary": "1-2 sentence explanation of what changed and why it looks safe or risky"}}"""
 
     try:
         response = await client.chat.completions.create(
@@ -701,12 +878,13 @@ Respond in this exact JSON format (no markdown, no backticks):
             risk = "low"
 
         recommendation = result.get("recommendation", "Review this dependency before merging")
-        return risk, reasons, recommendation
+        summary_text = result.get("summary")
+        return risk, reasons, recommendation, analysis_basis, analyzed_code, summary_text
 
     except Exception:
         logger.warning("AI analysis failed for %s, falling back to heuristic scoring", dep.name, exc_info=True)
         risk = "high" if len(reasons) >= 3 else "medium"
-        return risk, reasons, "Review this dependency manually before merging"
+        return risk, reasons, "Review this dependency manually before merging", analysis_basis, analyzed_code, None
 
 
 # ---------------------------------------------------------------------------
@@ -727,6 +905,7 @@ async def scan_dependencies(req: ScanRequest):
     pypi_client = PyPIClient()
 
     findings: list[Finding] = []
+    results_out: list[PackageResult] = []
     checked = 0
 
     # Phase 1 — heuristic checks (parallel)
@@ -746,9 +925,11 @@ async def scan_dependencies(req: ScanRequest):
             logger.warning("Heuristic check failed for %s: %s", dep.name, result)
             continue
         reasons, meta, send_to_ai = result
-        if send_to_ai:
+        if meta.get("version_exists") is False:
+            heuristic_only.append((dep, reasons, meta))
+        elif send_to_ai or dep.is_new or dep.previous_version:
             needs_ai.append((dep, reasons, meta))
-        elif reasons:
+        else:
             heuristic_only.append((dep, reasons, meta))
 
     def _registry_url(dep: Dependency) -> str:
@@ -759,19 +940,34 @@ async def scan_dependencies(req: ScanRequest):
     # Heuristic-only findings (not serious enough for AI)
     for dep, reasons, meta in heuristic_only:
         reasons = _dedupe_reasons(reasons)
-        if not reasons:
-            continue
-        findings.append(Finding(
+        risk = "low"
+        recommendation = "No blocking issues found from registry validation."
+        summary = _make_summary(
+            dep=dep,
+            risk=risk,
+            reasons=reasons,
+            analyzed_code=False,
+            analysis_basis="metadata_only",
+            recommendation=recommendation,
+        )
+        result_item = PackageResult(
             package=dep.name,
             registry=dep.registry,
             version=dep.version,
             previous_version=dep.previous_version,
-            risk="low",
+            is_new=dep.is_new,
+            risk=risk,
+            summary=summary,
             reasons=reasons,
-            recommendation="No action required, noted for awareness",
+            recommendation=recommendation,
             registry_url=_registry_url(dep),
             weekly_downloads=meta.get("weekly_downloads"),
-        ))
+            analyzed_code=False,
+            analysis_basis="metadata_only",
+        )
+        results_out.append(result_item)
+        if reasons:
+            findings.append(Finding(**result_item.model_dump(exclude={"summary", "is_new", "analyzed_code", "analysis_basis"})))
 
     # Phase 2 — AI deep-dive on flagged deps (parallel)
     if needs_ai:
@@ -784,38 +980,54 @@ async def scan_dependencies(req: ScanRequest):
         for (dep, reasons, meta), ai_result in zip(needs_ai, ai_results):
             if isinstance(ai_result, Exception):
                 logger.warning("AI analysis failed for %s: %s", dep.name, ai_result)
-                risk, final_reasons, recommendation = (
-                    "medium", reasons, "Review this dependency manually"
+                risk, final_reasons, recommendation, analysis_basis, analyzed_code, model_summary = (
+                    "medium", reasons, "Review this dependency manually", "metadata_only", False, None
                 )
             else:
-                risk, final_reasons, recommendation = ai_result
+                risk, final_reasons, recommendation, analysis_basis, analyzed_code, model_summary = ai_result
 
             final_reasons = _dedupe_reasons(final_reasons)
-            if risk == "low" and not final_reasons:
-                continue
             if risk == "low" and final_reasons and all(
                 _reason_is_weak_signal(reason) for reason in final_reasons
             ):
-                continue
+                final_reasons = []
 
-            findings.append(Finding(
+            summary = model_summary.strip() if isinstance(model_summary, str) and model_summary.strip() else _make_summary(
+                dep=dep,
+                risk=risk,
+                reasons=final_reasons,
+                analyzed_code=analyzed_code,
+                analysis_basis=analysis_basis,
+                recommendation=recommendation,
+            )
+            result_item = PackageResult(
                 package=dep.name,
                 registry=dep.registry,
                 version=dep.version,
                 previous_version=dep.previous_version,
+                is_new=dep.is_new,
                 risk=risk,
+                summary=summary,
                 reasons=final_reasons,
                 recommendation=recommendation,
                 registry_url=_registry_url(dep),
                 weekly_downloads=meta.get("weekly_downloads"),
-            ))
+                analyzed_code=analyzed_code,
+                analysis_basis=analysis_basis,
+            )
+            results_out.append(result_item)
+
+            if risk != "low" or final_reasons:
+                findings.append(Finding(**result_item.model_dump(exclude={"summary", "is_new", "analyzed_code", "analysis_basis"})))
 
     # Sort findings by severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: severity_order.get(f.risk, 4))
+    results_out.sort(key=lambda r: (severity_order.get(r.risk, 4), r.package))
 
     return ScanResponse(
         findings=findings,
+        results=results_out,
         summary=ScanSummary(
             total_deps=len(req.dependencies),
             checked=checked,
