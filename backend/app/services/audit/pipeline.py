@@ -50,7 +50,7 @@ async def trigger_vulnerability_scan(
         # Use the backend's own URL for callbacks
         backend_base = settings.audit_worker_url.replace(":8080", ":8000") if settings.audit_worker_url else ""
         # Actually use the Cloud Run URL
-        callback_url = f"https://ghost-api-495743911277.us-central1.run.app/api/v1/webhooks/audit-callback"
+        callback_url = f"https://ghostapi.validia.ai/api/v1/webhooks/audit-callback"
 
     # Submit to worker
     try:
