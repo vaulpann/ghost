@@ -151,19 +151,30 @@ function parseNpmLockfile(content) {
         // pkgPath looks like "node_modules/lodash" or "node_modules/@scope/pkg"
         const name = pkgPath.replace(/^.*node_modules\//, "");
         if (name && info.version) {
-          deps.push({ name, version: info.version, ecosystem: "npm" });
+          deps.push({
+            name,
+            version: info.version,
+            ecosystem: "npm",
+            compare_key: `npm:${pkgPath}`,
+          });
         }
       }
     }
 
     // npm v1 lockfile format uses "dependencies"
     if (deps.length === 0 && lock.dependencies) {
-      const walk = (depMap) => {
+      const walk = (depMap, parentPath = "") => {
         for (const [name, info] of Object.entries(depMap)) {
+          const pkgPath = parentPath ? `${parentPath}>${name}` : name;
           if (info.version) {
-            deps.push({ name, version: info.version, ecosystem: "npm" });
+            deps.push({
+              name,
+              version: info.version,
+              ecosystem: "npm",
+              compare_key: `npm:${pkgPath}`,
+            });
           }
-          if (info.dependencies) walk(info.dependencies);
+          if (info.dependencies) walk(info.dependencies, pkgPath);
         }
       };
       walk(lock.dependencies);
@@ -384,11 +395,12 @@ function detectChangedDeps(lockfile, deps) {
     return deps.map((dep) => ({ ...dep, is_new: true }));
   }
 
-  const baseMap = new Map(baseDeps.map((dep) => [dep.name, dep.version || null]));
+  const depKey = (dep) => dep.compare_key || `${dep.ecosystem}:${dep.name}`;
+  const baseMap = new Map(baseDeps.map((dep) => [depKey(dep), dep.version || null]));
   const changed = [];
 
   for (const dep of deps) {
-    const previousVersion = baseMap.get(dep.name);
+    const previousVersion = baseMap.get(depKey(dep));
     if (previousVersion === undefined) {
       changed.push({
         ...dep,
@@ -785,8 +797,8 @@ async function main() {
   info(`Total unique dependencies: ${allDeps.length}`);
 
   if (allDeps.length === 0) {
-    info("No dependencies found to scan.");
-    writeSummary("## \u2705 Ghost Supply Chain Scan\n\nNo dependencies found to scan.");
+    info("No new or changed dependencies detected.");
+    writeSummary("## \u2705 Ghost Supply Chain Scan\n\nNo new or changed dependencies to scan.");
     return;
   }
 
