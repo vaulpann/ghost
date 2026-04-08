@@ -1,13 +1,6 @@
 name: Ghost Supply Chain Scan
 on:
   pull_request:
-    paths:
-      - "frontend/package-lock.json"
-      - "frontend/yarn.lock"
-      - "frontend/pnpm-lock.yaml"
-      - "backend/requirements.txt"
-      - "backend/pyproject.toml"
-      - "audit-worker/requirements.txt"
 
 jobs:
   scan:
