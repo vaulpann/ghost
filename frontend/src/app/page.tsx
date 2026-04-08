@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getSentinelScenarios, getSentinelCompletions } from "@/lib/api";
+import { getSentinelDaily, getSentinelScenarios, getSentinelCompletions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { RegistryBadge } from "@/components/analysis/registry-badge";
 
@@ -13,12 +13,10 @@ function getSessionId(): string {
   return id;
 }
 
-/** Get today's date string in EST (America/New_York) as YYYY-MM-DD */
 function getTodayEST(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
-/** Day number since April 7, 2026 (Day #0) */
 function getDayNumber(): number {
   const start = new Date("2026-04-07T00:00:00-04:00");
   const todayStr = getTodayEST();
@@ -28,51 +26,25 @@ function getDayNumber(): number {
   return Math.floor((today.getTime() - startLocal.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-/**
- * Pick 4 daily challenges from the scenario pool based on today's date.
- * Uses a seeded shuffle so everyone sees the same 4 on a given day.
- */
-function getDailyChallenges(scenarios: any[]): { dailies: any[]; open: any[] } {
-  if (scenarios.length <= 4) return { dailies: scenarios, open: [] };
-
-  const today = getTodayEST();
-  let seed = 0;
-  for (let i = 0; i < today.length; i++) seed = today.charCodeAt(i) + ((seed << 5) - seed);
-
-  const indices = scenarios.map((_, i) => i);
-  const mulberry32 = (a: number) => () => {
-    a |= 0; a = a + 0x6D2B79F5 | 0;
-    let t = Math.imul(a ^ a >>> 15, 1 | a);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-  const rng = mulberry32(seed);
-  for (let i = indices.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [indices[i], indices[j]] = [indices[j], indices[i]];
-  }
-
-  return {
-    dailies: indices.slice(0, 4).map(i => scenarios[i]),
-    open: indices.slice(4).map(i => scenarios[i]),
-  };
-}
-
 const PUZZLE_IMAGES = Array.from({ length: 10 }, (_, i) => `/puzzle-${i + 1}.jpg`);
 
 export default function ResolverPage() {
-  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [dailies, setDailies] = useState<any[]>([]);
+  const [open, setOpen] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [completed, setCompleted] = useState<Record<string, any>>({});
 
   useEffect(() => {
     async function load() {
       try {
-        const [scenData, compData] = await Promise.all([
+        const [dailyData, allData, compData] = await Promise.all([
+          getSentinelDaily(),
           getSentinelScenarios("per_page=50"),
           getSentinelCompletions(getSessionId()).catch(() => ({ completions: {} })),
         ]);
-        setScenarios(scenData.items);
+        const dailyIds = new Set(dailyData.items.map((d: any) => d.id));
+        setDailies(dailyData.items);
+        setOpen(allData.items.filter((s: any) => !dailyIds.has(s.id)));
         setCompleted(compData.completions);
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
@@ -87,8 +59,6 @@ export default function ResolverPage() {
       </div>
     );
   }
-
-  const { dailies, open } = getDailyChallenges(scenarios);
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -105,7 +75,7 @@ export default function ResolverPage() {
         </p>
       </div>
 
-      {/* Daily Challenges — 2x2 grid */}
+      {/* Daily Challenges */}
       {dailies.length > 0 && (
         <div className="animate-fade-in animate-fade-in-delay-1">
           <div className="flex items-center justify-between mb-4">
@@ -118,11 +88,7 @@ export default function ResolverPage() {
               if (res) {
                 return (
                   <div key={d.id} className="rounded-2xl glass overflow-hidden">
-                    <img
-                      src={PUZZLE_IMAGES[idx]}
-                      alt=""
-                      className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square"
-                    />
+                    <img src={PUZZLE_IMAGES[idx]} alt="" className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square" />
                     <div className="p-4">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-semibold text-[15px] text-foreground/90 truncate">{d.package_name}</span>
@@ -147,30 +113,16 @@ export default function ResolverPage() {
                 );
               }
               return (
-                <Link
-                  key={d.id}
-                  href={`/sentinel/inspect/${d.id}`}
-                  className="group block rounded-2xl glass glass-hover overflow-hidden"
-                >
-                  <img
-                    src={PUZZLE_IMAGES[idx]}
-                    alt=""
-                    className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square group-hover:scale-[1.02] transition-transform duration-300"
-                  />
+                <Link key={d.id} href={`/sentinel/inspect/${d.id}`} className="group block rounded-2xl glass glass-hover overflow-hidden">
+                  <img src={PUZZLE_IMAGES[idx]} alt="" className="w-full object-cover h-[160px] sm:h-auto sm:aspect-square group-hover:scale-[1.02] transition-transform duration-300" />
                   <div className="p-4">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-semibold text-[15px] text-foreground/90 group-hover:text-foreground transition-colors truncate">
-                        {d.package_name}
-                      </span>
+                      <span className="font-semibold text-[15px] text-foreground/90 group-hover:text-foreground transition-colors truncate">{d.package_name}</span>
                       <RegistryBadge registry={d.registry} />
                     </div>
                     <div className="flex items-center justify-between">
-                      <p className="text-[12px] text-muted-foreground/50 font-mono">
-                        {d.version_from || "?"} &rarr; {d.version_to || "?"}
-                      </p>
-                      <span className="text-[12px] font-semibold text-[#1e3a5f] group-hover:text-[#2a4f7a] transition-colors">
-                        Play &rarr;
-                      </span>
+                      <p className="text-[12px] text-muted-foreground/50 font-mono">{d.version_from || "?"} &rarr; {d.version_to || "?"}</p>
+                      <span className="text-[12px] font-semibold text-[#1e3a5f] group-hover:text-[#2a4f7a] transition-colors">Play &rarr;</span>
                     </div>
                   </div>
                 </Link>
@@ -185,39 +137,24 @@ export default function ResolverPage() {
         <div className="animate-fade-in animate-fade-in-delay-2 relative">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[15px] font-medium text-foreground/60">Open Puzzles</h2>
-            <span className="text-[11px] text-muted-foreground/50 tabular-nums">
-              {open.length} available
-            </span>
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums">{open.length} available</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 opacity-40 pointer-events-none select-none" style={{ filter: "grayscale(0.6)" }}>
             {open.map((s, i) => (
-              <div
-                key={s.id}
-                className="flex items-center gap-4 rounded-xl glass p-4"
-              >
-                <img
-                  src={PUZZLE_IMAGES[(i + 4) % PUZZLE_IMAGES.length]}
-                  alt=""
-                  className="shrink-0 rounded-lg object-cover"
-                  style={{ width: 40, height: 40 }}
-                />
+              <div key={s.id} className="flex items-center gap-4 rounded-xl glass p-4">
+                <img src={PUZZLE_IMAGES[(i + 4) % PUZZLE_IMAGES.length]} alt="" className="shrink-0 rounded-lg object-cover" style={{ width: 40, height: 40 }} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-                    <span className="font-medium text-[13px] text-foreground/80">
-                      {s.package_name}
-                    </span>
+                    <span className="font-medium text-[13px] text-foreground/80">{s.package_name}</span>
                     <RegistryBadge registry={s.registry} />
-                    <span className="text-[11px] text-muted-foreground/50 font-mono">
-                      {s.version_from || "?"} &rarr; {s.version_to || "?"}
-                    </span>
+                    <span className="text-[11px] text-muted-foreground/50 font-mono">{s.version_from || "?"} &rarr; {s.version_to || "?"}</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Sign up overlay */}
           <div className="absolute inset-0 flex items-center justify-center" style={{ top: 36 }}>
             <div className="rounded-xl bg-white/80 backdrop-blur-sm border border-foreground/[0.06] px-6 py-4 text-center shadow-sm">
               <p className="text-[14px] font-semibold text-foreground/80">Sign up to unlock all puzzles</p>
@@ -227,11 +164,9 @@ export default function ResolverPage() {
         </div>
       )}
 
-      {scenarios.length === 0 && (
+      {dailies.length === 0 && (
         <div className="rounded-2xl glass p-12 text-center">
-          <div className="text-muted-foreground/30 text-sm">
-            No puzzles available yet.
-          </div>
+          <div className="text-muted-foreground/30 text-sm">No puzzles available yet.</div>
         </div>
       )}
     </div>

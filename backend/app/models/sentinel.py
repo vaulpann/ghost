@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,7 @@ class SentinelScenario(UUIDMixin, Base):
     flow_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     context_data: Mapped[dict] = mapped_column(JSON, nullable=False)
 
+    used_on_date: Mapped[date | None] = mapped_column(Date)
     postmortem: Mapped[str | None] = mapped_column(Text)
     real_cve: Mapped[str | None] = mapped_column(String(50))
     real_cvss: Mapped[float | None] = mapped_column(Float)

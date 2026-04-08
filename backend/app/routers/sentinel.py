@@ -39,6 +39,52 @@ TOOLS_BY_LEVEL = {
 }
 
 
+@router.get("/sentinel/daily")
+async def get_daily_challenges(db: AsyncSession = Depends(get_db)):
+    """Return today's 4 challenges. Picks from unused scenarios and locks them to today's date.
+    Once assigned, the same 4 are returned for the rest of the day (midnight EST)."""
+    from datetime import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    today = dt.now(ZoneInfo("America/New_York")).date()
+
+    # Check if today's challenges are already assigned
+    result = await db.execute(
+        select(SentinelScenario).where(SentinelScenario.used_on_date == today)
+    )
+    todays = result.scalars().all()
+
+    if len(todays) < 4:
+        # Pick from unused scenarios
+        unused_result = await db.execute(
+            select(SentinelScenario).where(SentinelScenario.used_on_date.is_(None))
+        )
+        unused = list(unused_result.scalars().all())
+
+        # Need 4 - len(todays) more
+        needed = 4 - len(todays)
+        if unused and needed > 0:
+            import random
+            random.seed(today.isoformat())
+            picks = random.sample(unused, min(needed, len(unused)))
+            for s in picks:
+                s.used_on_date = today
+            await db.commit()
+            todays = list(todays) + picks
+
+    # Build response
+    items = []
+    for s in todays[:4]:
+        verdict_count = (await db.execute(
+            select(func.count(SentinelVerdict.id)).where(SentinelVerdict.scenario_id == s.id)
+        )).scalar() or 0
+        resp = ScenarioResponse.model_validate(s)
+        resp.total_inspections = verdict_count
+        items.append(resp)
+
+    return {"items": items}
+
+
 @router.get("/sentinel/scenarios", response_model=ScenarioListResponse)
 async def list_scenarios(
     difficulty: str | None = None,
