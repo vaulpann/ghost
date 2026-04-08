@@ -1,0 +1,516 @@
+"""POST /api/v1/scan — analyze dependencies for supply chain threats."""
+
+import asyncio
+import logging
+import time
+import uuid
+from datetime import datetime, timezone
+
+import httpx
+from fastapi import APIRouter, HTTPException
+from openai import AsyncOpenAI
+from pydantic import BaseModel
+
+from app.config import settings
+from app.services.registry.npm import NpmClient, NPM_REGISTRY
+from app.services.registry.pypi import PyPIClient, PYPI_API
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["scan"])
+
+# ---------------------------------------------------------------------------
+# Rate limiting — in-memory, keyed by repository, 10 scans/day
+# ---------------------------------------------------------------------------
+
+_rate_limits: dict[str, list[float]] = {}  # repo -> list of timestamps
+RATE_LIMIT_MAX = 10
+RATE_LIMIT_WINDOW = 86_400  # 24 hours
+
+
+def _check_rate_limit(repository: str) -> None:
+    now = time.time()
+    timestamps = _rate_limits.get(repository, [])
+    # Prune old entries
+    timestamps = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+    if len(timestamps) >= RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded for {repository}: {RATE_LIMIT_MAX} scans per day",
+        )
+    timestamps.append(now)
+    _rate_limits[repository] = timestamps
+
+
+# ---------------------------------------------------------------------------
+# Top popular package names — used for typosquat detection
+# ---------------------------------------------------------------------------
+
+TOP_NPM_PACKAGES = {
+    "lodash", "chalk", "react", "express", "debug", "tslib", "commander",
+    "axios", "glob", "semver", "uuid", "mkdirp", "minimist", "moment",
+    "webpack", "typescript", "yargs", "underscore", "async", "request",
+    "next", "vue", "angular", "jquery", "dotenv", "cors", "body-parser",
+    "fs-extra", "rimraf", "inquirer", "rxjs", "eslint", "prettier",
+    "babel-core", "mocha", "jest", "eslint-plugin-react", "nodemon",
+    "socket.io", "mongoose", "redis", "pg", "mysql2", "sharp", "puppeteer",
+    "passport", "jsonwebtoken", "bcrypt", "helmet", "morgan",
+}
+
+TOP_PYPI_PACKAGES = {
+    "requests", "numpy", "pandas", "boto3", "setuptools", "pip", "wheel",
+    "urllib3", "certifi", "idna", "charset-normalizer", "pyyaml", "typing-extensions",
+    "six", "python-dateutil", "packaging", "cryptography", "jinja2", "markupsafe",
+    "click", "flask", "django", "pillow", "scipy", "matplotlib", "sqlalchemy",
+    "pydantic", "fastapi", "uvicorn", "httpx", "aiohttp", "pytest", "coverage",
+    "black", "ruff", "mypy", "celery", "redis", "psycopg2", "gunicorn",
+    "beautifulsoup4", "lxml", "scrapy", "tqdm", "rich", "pygments", "paramiko",
+    "grpcio", "protobuf", "transformers",
+}
+
+# No skip threshold — even popular packages get compromised (ua-parser-js, event-stream, coa)
+
+
+# ---------------------------------------------------------------------------
+# Levenshtein distance (simple DP implementation)
+# ---------------------------------------------------------------------------
+
+def _levenshtein(a: str, b: str) -> int:
+    if len(a) < len(b):
+        return _levenshtein(b, a)
+    if len(b) == 0:
+        return len(a)
+
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            cost = 0 if ca == cb else 1
+            curr.append(min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost))
+        prev = curr
+    return prev[-1]
+
+
+def _is_typosquat(name: str, registry: str) -> str | None:
+    """Return the popular package name this looks like, or None."""
+    popular = TOP_NPM_PACKAGES if registry == "npm" else TOP_PYPI_PACKAGES
+    lower = name.lower()
+    for pkg in popular:
+        if lower == pkg:
+            return None  # exact match = it IS the popular package
+        if _levenshtein(lower, pkg) <= 2:
+            return pkg
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
+
+class Dependency(BaseModel):
+    name: str
+    version: str | None = None
+    registry: str  # "npm" or "pypi"
+    is_new: bool = False
+
+
+class ScanRequest(BaseModel):
+    dependencies: list[Dependency]
+    repository: str
+    context: str = "pr"  # "pr" or "push"
+
+
+class Finding(BaseModel):
+    package: str
+    registry: str
+    version: str | None
+    risk: str  # "critical", "high", "medium", "low"
+    reasons: list[str]
+    recommendation: str
+
+
+class ScanSummary(BaseModel):
+    total_deps: int
+    checked: int
+    flagged: int
+    clean: int
+
+
+class ScanResponse(BaseModel):
+    findings: list[Finding]
+    summary: ScanSummary
+    scan_id: str
+
+
+# ---------------------------------------------------------------------------
+# Registry helpers — extend metadata with install scripts / creation time
+# ---------------------------------------------------------------------------
+
+async def _npm_extended_metadata(client: httpx.AsyncClient, name: str, version: str | None) -> dict:
+    """Fetch full npm package JSON for install script and age checks."""
+    meta: dict = {
+        "has_install_scripts": False,
+        "created_at": None,
+        "maintainer_count": 0,
+    }
+    try:
+        url = f"{NPM_REGISTRY}/{name}"
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return meta
+        data = resp.json()
+
+        # Creation time
+        time_data = data.get("time", {})
+        created_str = time_data.get("created")
+        if created_str:
+            meta["created_at"] = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+
+        # Maintainer count
+        maintainers = data.get("maintainers", [])
+        meta["maintainer_count"] = len(maintainers)
+
+        # Install scripts — check the target version (or latest)
+        v = version or data.get("dist-tags", {}).get("latest")
+        version_data = data.get("versions", {}).get(v, {})
+        scripts = version_data.get("scripts", {})
+        install_scripts = {"preinstall", "install", "postinstall", "preuninstall", "postuninstall"}
+        meta["has_install_scripts"] = bool(install_scripts & set(scripts.keys()))
+    except Exception:
+        logger.debug("Failed to fetch extended npm metadata for %s", name, exc_info=True)
+    return meta
+
+
+async def _pypi_extended_metadata(client: httpx.AsyncClient, name: str) -> dict:
+    """Fetch PyPI JSON for age and maintainer info."""
+    meta: dict = {
+        "has_install_scripts": False,  # can't easily detect from PyPI JSON
+        "created_at": None,
+        "maintainer_count": 0,
+    }
+    try:
+        url = f"{PYPI_API}/{name}/json"
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            return meta
+        data = resp.json()
+
+        # Earliest release date as proxy for creation time
+        releases = data.get("releases", {})
+        earliest = None
+        for files in releases.values():
+            for f in files:
+                upload = f.get("upload_time_iso_8601")
+                if upload:
+                    dt = datetime.fromisoformat(upload.replace("Z", "+00:00"))
+                    if earliest is None or dt < earliest:
+                        earliest = dt
+        meta["created_at"] = earliest
+
+        info = data.get("info", {})
+        # Count author + maintainer as a rough proxy
+        count = 0
+        if info.get("author"):
+            count += 1
+        if info.get("maintainer"):
+            count += 1
+        meta["maintainer_count"] = max(count, 1)
+    except Exception:
+        logger.debug("Failed to fetch extended pypi metadata for %s", name, exc_info=True)
+    return meta
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: Heuristic checks
+# ---------------------------------------------------------------------------
+
+async def _verify_package_name(
+    dep: Dependency,
+    http_client: httpx.AsyncClient,
+) -> tuple[bool, str | None]:
+    """Verify the package actually exists on the claimed registry.
+    Returns (exists, canonical_name). Catches wrong-registry lookups."""
+    try:
+        if dep.registry == "npm":
+            # npm scoped packages start with @
+            if "/" in dep.name and not dep.name.startswith("@"):
+                return False, f"'{dep.name}' looks like a path, not an npm package"
+            resp = await http_client.get(f"{NPM_REGISTRY}/{dep.name}")
+            if resp.status_code == 404:
+                return False, f"Package '{dep.name}' not found on npm"
+            if resp.status_code == 200:
+                data = resp.json()
+                return True, data.get("name", dep.name)
+        elif dep.registry == "pypi":
+            if "/" in dep.name:
+                return False, f"'{dep.name}' looks like a path, not a PyPI package"
+            resp = await http_client.get(f"{PYPI_API}/{dep.name}/json")
+            if resp.status_code == 404:
+                return False, f"Package '{dep.name}' not found on PyPI"
+            if resp.status_code == 200:
+                data = resp.json()
+                return True, data.get("info", {}).get("name", dep.name)
+    except Exception:
+        pass
+    return True, None  # Can't verify, assume ok
+
+
+async def _heuristic_check(
+    dep: Dependency,
+    npm_client: NpmClient,
+    pypi_client: PyPIClient,
+    http_client: httpx.AsyncClient,
+) -> tuple[list[str], dict, bool]:
+    """Return (reasons_flagged, metadata_dict, needs_ai).
+    Empty reasons = clean. needs_ai = True means send to Phase 2."""
+    reasons: list[str] = []
+    meta: dict = {}
+    needs_ai = False
+
+    # Step 1: Verify the package actually exists with this name on this registry
+    exists, canonical_name = await _verify_package_name(dep, http_client)
+    if not exists:
+        return [canonical_name or f"Package '{dep.name}' not found on {dep.registry}"], meta, False
+
+    # If canonical name differs from what was sent, note it
+    if canonical_name and canonical_name != dep.name:
+        meta["canonical_name"] = canonical_name
+
+    try:
+        # Step 2: Fetch metadata
+        if dep.registry == "npm":
+            pkg_meta = await npm_client.get_package_metadata(dep.name)
+            ext = await _npm_extended_metadata(http_client, dep.name, dep.version)
+        else:
+            pkg_meta = await pypi_client.get_package_metadata(dep.name)
+            ext = await _pypi_extended_metadata(http_client, dep.name)
+
+        downloads = pkg_meta.weekly_downloads
+        meta.update({
+            "weekly_downloads": downloads,
+            "repository_url": pkg_meta.repository_url,
+            "description": pkg_meta.description,
+            **ext,
+        })
+
+        # --- Checks for ALL packages (popular or not) ---
+
+        # Install scripts are always worth flagging
+        if ext.get("has_install_scripts"):
+            reasons.append("Contains install lifecycle scripts (preinstall/postinstall)")
+            needs_ai = True
+
+        # New dependency being added deserves AI review regardless of popularity
+        if dep.is_new:
+            needs_ai = True
+
+        # --- Additional flags for less-known packages ---
+
+        if downloads is not None and downloads < 1000:
+            reasons.append(f"Only {downloads:,} weekly downloads")
+            needs_ai = True
+
+        # New package (< 30 days old)
+        created_at = ext.get("created_at")
+        if created_at:
+            age_days = (datetime.now(timezone.utc) - created_at).days
+            if age_days < 30:
+                reasons.append(f"Package created {age_days} day{'s' if age_days != 1 else ''} ago")
+                needs_ai = True
+
+        # No repository URL
+        if not pkg_meta.repository_url:
+            reasons.append("No source repository URL listed")
+
+        # Single maintainer with low downloads
+        if ext.get("maintainer_count", 0) <= 1 and downloads is not None and downloads < 5000:
+            reasons.append("Single maintainer with low download count")
+            needs_ai = True
+
+        # Typosquat check
+        similar_to = _is_typosquat(dep.name, dep.registry)
+        if similar_to:
+            reasons.append(f"Name is suspiciously similar to popular package '{similar_to}'")
+            needs_ai = True
+
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            reasons.append("Package not found on registry")
+        else:
+            logger.warning("Registry error checking %s: %s", dep.name, exc)
+    except Exception:
+        logger.warning("Error during heuristic check for %s", dep.name, exc_info=True)
+
+    return reasons, meta, needs_ai
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: AI deep-dive (flagged deps only)
+# ---------------------------------------------------------------------------
+
+async def _ai_analyze(
+    dep: Dependency,
+    reasons: list[str],
+    meta: dict,
+) -> tuple[str, list[str], str]:
+    """Ask GPT-4o-mini whether this flagged package is malicious.
+
+    Returns (risk_level, updated_reasons, recommendation).
+    """
+    if not settings.openai_api_key:
+        # No API key — fall back to heuristic-only risk assessment
+        risk = "high" if len(reasons) >= 3 else "medium"
+        return risk, reasons, "Review this dependency manually before merging"
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    downloads = meta.get('weekly_downloads')
+    dl_context = ""
+    if downloads and downloads > 100000:
+        dl_context = f"\nIMPORTANT: This is a POPULAR package ({downloads:,} weekly downloads). Popular packages are HIGH-VALUE TARGETS for account takeover attacks (e.g., ua-parser-js, event-stream, coa). Evaluate whether install scripts or behavioral changes could indicate compromise. Do NOT dismiss concerns just because it's popular."
+
+    prompt = f"""You are a supply-chain security analyst. A dependency was flagged during an automated scan. Analyze whether it is likely malicious, a typosquat, or suspicious.
+
+Package: {dep.name}
+Registry: {dep.registry}
+Version: {dep.version or "latest"}
+Is new dependency: {dep.is_new}
+{dl_context}
+
+Heuristic flags:
+{chr(10).join(f"- {r}" for r in reasons) if reasons else "- New dependency added (no specific heuristic flags, but needs review)"}
+
+Metadata:
+- Weekly downloads: {downloads if downloads else 'unknown'}
+- Repository URL: {meta.get('repository_url', 'none')}
+- Description: {meta.get('description', 'none')}
+- Created: {meta.get('created_at', 'unknown')}
+- Has install scripts: {meta.get('has_install_scripts', False)}
+- Maintainer count: {meta.get('maintainer_count', 'unknown')}
+
+Evaluate the risk. For new dependencies, consider whether the package is well-established and expected for the project type.
+
+Respond in this exact JSON format (no markdown, no backticks):
+{{"risk": "critical|high|medium|low", "additional_concerns": ["list of any additional concerns beyond the heuristic flags, or empty"], "recommendation": "one sentence recommendation"}}"""
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=300,
+        )
+        import json
+        content = response.choices[0].message.content.strip()
+        result = json.loads(content)
+
+        risk = result.get("risk", "medium")
+        if risk not in ("critical", "high", "medium", "low"):
+            risk = "medium"
+
+        additional = result.get("additional_concerns", [])
+        if additional:
+            reasons = reasons + [c for c in additional if c]
+
+        recommendation = result.get("recommendation", "Review this dependency before merging")
+        return risk, reasons, recommendation
+
+    except Exception:
+        logger.warning("AI analysis failed for %s, falling back to heuristic scoring", dep.name, exc_info=True)
+        risk = "high" if len(reasons) >= 3 else "medium"
+        return risk, reasons, "Review this dependency manually before merging"
+
+
+# ---------------------------------------------------------------------------
+# Main endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/scan", response_model=ScanResponse)
+async def scan_dependencies(req: ScanRequest):
+    """Analyze a list of dependencies for supply chain threats.
+
+    Phase 1 runs heuristic checks on all deps (fast).
+    Phase 2 sends flagged deps to GPT-4o-mini for deeper analysis (slow, but rare).
+    """
+    _check_rate_limit(req.repository)
+
+    scan_id = str(uuid.uuid4())
+    npm_client = NpmClient()
+    pypi_client = PyPIClient()
+
+    findings: list[Finding] = []
+    checked = 0
+
+    # Phase 1 — heuristic checks (parallel)
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        tasks = [
+            _heuristic_check(dep, npm_client, pypi_client, http_client)
+            for dep in req.dependencies
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    needs_ai: list[tuple[Dependency, list[str], dict]] = []
+    heuristic_only: list[tuple[Dependency, list[str], dict]] = []
+
+    for dep, result in zip(req.dependencies, results):
+        checked += 1
+        if isinstance(result, Exception):
+            logger.warning("Heuristic check failed for %s: %s", dep.name, result)
+            continue
+        reasons, meta, send_to_ai = result
+        if send_to_ai:
+            needs_ai.append((dep, reasons, meta))
+        elif reasons:
+            heuristic_only.append((dep, reasons, meta))
+
+    # Heuristic-only findings (not serious enough for AI)
+    for dep, reasons, _meta in heuristic_only:
+        findings.append(Finding(
+            package=dep.name,
+            registry=dep.registry,
+            version=dep.version,
+            risk="low",
+            reasons=reasons,
+            recommendation="No action required, noted for awareness",
+        ))
+
+    # Phase 2 — AI deep-dive on flagged deps (parallel)
+    if needs_ai:
+        ai_tasks = [
+            _ai_analyze(dep, reasons, meta)
+            for dep, reasons, meta in needs_ai
+        ]
+        ai_results = await asyncio.gather(*ai_tasks, return_exceptions=True)
+
+        for (dep, reasons, _meta), ai_result in zip(needs_ai, ai_results):
+            if isinstance(ai_result, Exception):
+                logger.warning("AI analysis failed for %s: %s", dep.name, ai_result)
+                risk, final_reasons, recommendation = (
+                    "medium", reasons, "Review this dependency manually"
+                )
+            else:
+                risk, final_reasons, recommendation = ai_result
+
+            findings.append(Finding(
+                package=dep.name,
+                registry=dep.registry,
+                version=dep.version,
+                risk=risk,
+                reasons=final_reasons,
+                recommendation=recommendation,
+            ))
+
+    # Sort findings by severity
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    findings.sort(key=lambda f: severity_order.get(f.risk, 4))
+
+    return ScanResponse(
+        findings=findings,
+        summary=ScanSummary(
+            total_deps=len(req.dependencies),
+            checked=checked,
+            flagged=len(findings),
+            clean=checked - len(findings),
+        ),
+        scan_id=scan_id,
+    )

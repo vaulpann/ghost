@@ -1,0 +1,19 @@
+{
+  "name": "@validia/ghost-action",
+  "version": "1.0.0",
+  "description": "GitHub Action to scan dependencies for supply chain threats using Ghost",
+  "main": "src/index.js",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vaulpann/ghost.git",
+    "directory": "github-action"
+  },
+  "keywords": [
+    "github-action",
+    "supply-chain",
+    "security",
+    "dependencies"
+  ]
+}
