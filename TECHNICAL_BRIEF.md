@@ -89,7 +89,7 @@ Present real package updates to humans and let them decide: safe or compromised?
 Free GitHub Action that scans dependency changes on PRs. Detects new/changed dependencies, downloads actual source code, runs AI analysis on the code diff, and posts findings as a PR comment. Blocks merges if risk exceeds threshold.
 
 ### Current Technical Approach
-- **Action** (`github-action/`): Composite action, zero npm dependencies (Node.js built-ins only). Detects lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, requirements.txt, poetry.lock, Pipfile.lock). Diffs against base branch to find new/changed deps. Sends ONLY changed deps to the Ghost API — not the entire dependency tree.
+- **Action** (`vaulpann/ghost-action`): Marketplace-published composite action, zero npm dependencies (Node.js built-ins only). Detects lock files (package-lock.json, yarn.lock, pnpm-lock.yaml, requirements.txt, poetry.lock, Pipfile.lock). Diffs against base branch to find new/changed deps. Sends ONLY changed deps to the Ghost API — not the entire dependency tree.
 - **API endpoint** (`POST /api/v1/scan`): Two-phase analysis:
   - Phase 1 — Heuristic checks on all submitted deps: verifies package exists on claimed registry, fetches downloads (npm API + pypistats.org), checks age, install scripts, typosquat detection (Levenshtein distance against top 50 packages), maintainer count, repo URL.
   - Phase 2 — AI deep-dive on flagged deps: For version changes, downloads both versions from the registry, produces a unified diff, and sends the actual code changes to GPT-4o-mini. For new deps, downloads the package, inspects install scripts + entry points + main files, runs pattern scan, sends source code to GPT-4o-mini.
@@ -103,9 +103,7 @@ Free GitHub Action that scans dependency changes on PRs. Detects new/changed dep
 - **Registry URLs and download counts** are now returned by the API but may not be rendering in the PR comment yet (field mapping needs verification).
 
 ### Key Files
-- `github-action/action.yml` — action definition
-- `github-action/src/index.js` — main script (lock file parsing, diff detection, API call, PR comment)
-- `github-action/README.md` — usage instructions
+- `vaulpann/ghost-action` — published action repository (action definition, runtime, docs)
 - `backend/app/routers/scan.py` — scan endpoint (heuristic checks, AI analysis, version diffing)
 - `.github/workflows/ghost-scan.yml` — workflow for this repo
 
