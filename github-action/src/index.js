@@ -334,12 +334,17 @@ function parseAddedFromDiff(diff, lockfileName) {
   return added;
 }
 
-function detectNewDeps(lockfile, deps) {
+function parseLockfileContent(filename, content) {
+  const parser = PARSERS[filename];
+  if (!parser) return [];
+  return parser(content);
+}
+
+function getBaseLockfileContent(relativePath) {
   const baseBranch = getBaseBranch();
-  if (!baseBranch) return deps; // Not a PR — treat all deps as relevant
+  if (!baseBranch) return null;
 
   try {
-    // Make sure we have the base branch ref
     try {
       execSync(`git fetch origin ${process.env.GITHUB_BASE_REF || "main"} --depth=1`, {
         cwd: GITHUB_WORKSPACE,
@@ -349,23 +354,60 @@ function detectNewDeps(lockfile, deps) {
       // May already be fetched
     }
 
-    const diff = execSync(`git diff ${baseBranch} -- "${lockfile.relativePath}"`, {
+    return execSync(`git show ${baseBranch}:${relativePath}`, {
       cwd: GITHUB_WORKSPACE,
       encoding: "utf-8",
       maxBuffer: 50 * 1024 * 1024, // 50MB for big lockfiles
     });
-
-    if (!diff.trim()) return deps; // No changes to this lockfile
-
-    const addedNames = parseAddedFromDiff(diff, lockfile.filename);
-    return deps.map((d) => ({
-      ...d,
-      is_new: addedNames.has(d.name),
-    }));
-  } catch (e) {
-    info(`Could not diff against base branch: ${e.message}`);
-    return deps;
+  } catch {
+    return null;
   }
+}
+
+function detectChangedDeps(lockfile, deps) {
+  const baseBranch = getBaseBranch();
+  if (!baseBranch) {
+    return deps.map((dep) => ({ ...dep, is_new: true }));
+  }
+
+  const baseContent = getBaseLockfileContent(lockfile.relativePath);
+  if (!baseContent) {
+    info(`Could not load base lockfile for ${lockfile.relativePath}; treating current entries as relevant.`);
+    return deps.map((dep) => ({ ...dep, is_new: true }));
+  }
+
+  let baseDeps;
+  try {
+    baseDeps = parseLockfileContent(lockfile.filename, baseContent);
+  } catch (e) {
+    info(`Could not parse base ${lockfile.relativePath}: ${e.message}`);
+    return deps.map((dep) => ({ ...dep, is_new: true }));
+  }
+
+  const baseMap = new Map(baseDeps.map((dep) => [dep.name, dep.version || null]));
+  const changed = [];
+
+  for (const dep of deps) {
+    const previousVersion = baseMap.get(dep.name);
+    if (previousVersion === undefined) {
+      changed.push({
+        ...dep,
+        is_new: true,
+        previous_version: null,
+      });
+      continue;
+    }
+
+    if ((previousVersion || null) !== (dep.version || null)) {
+      changed.push({
+        ...dep,
+        is_new: false,
+        previous_version: previousVersion,
+      });
+    }
+  }
+
+  return changed;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +421,7 @@ async function callGhostScan(dependencies) {
   const mapped = dependencies.map((d) => ({
     name: d.name,
     version: d.version || null,
+    previous_version: d.previous_version || null,
     registry: d.ecosystem === "python" ? "pypi" : "npm",
     is_new: d.is_new || false,
   }));
@@ -431,7 +474,7 @@ async function fallbackPackageLookup(dependencies) {
 
   for (const dep of sample) {
     try {
-      const registry = dep.ecosystem === "pypi" ? "pypi" : "npm";
+      const registry = dep.ecosystem === "python" ? "pypi" : "npm";
       const params = new URLSearchParams({ search: dep.name, registry, per_page: "1" });
       const res = await request(`${API_URL}/api/v1/packages?${params}`, {
         headers: { "User-Agent": "ghost-github-action/1.0" },
@@ -453,11 +496,11 @@ async function fallbackPackageLookup(dependencies) {
             const versions = JSON.parse(vRes.body);
             const latest = versions.items?.[0];
 
-            if (latest && latest.risk_score && latest.risk_score > 30) {
+            if (latest && latest.risk_score && latest.risk_score >= 2.5) {
               const riskLevel =
-                latest.risk_score >= 80 ? "critical" :
-                latest.risk_score >= 60 ? "high" :
-                latest.risk_score >= 40 ? "medium" : "low";
+                latest.risk_score >= 5 ? "critical" :
+                latest.risk_score >= 4 ? "high" :
+                latest.risk_score >= 2.5 ? "medium" : "low";
 
               findings.push({
                 package: dep.name,
@@ -504,25 +547,33 @@ function riskLabel(level) {
   return level.charAt(0).toUpperCase() + level.slice(1);
 }
 
-function buildSummary(scanResult, totalDeps) {
+function buildSummary(scanResult, stats) {
   const findings = scanResult.findings || [];
+  const totalDeps = stats.total;
+  const totalNew = stats.new;
+  const totalUpdated = stats.updated;
   const total_checked = scanResult.summary?.checked || scanResult.total_checked || totalDeps;
   const total_clean = scanResult.summary?.clean || scanResult.total_clean || (total_checked - findings.length);
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const finding of findings) {
+    const risk = finding.risk || finding.risk_level;
+    if (risk && severityCounts[risk] != null) severityCounts[risk] += 1;
+  }
   const lines = [];
 
   if (findings.length === 0) {
     lines.push("## \u2705 Ghost Supply Chain Scan");
     lines.push("");
-    lines.push(`**No issues found** in ${totalDeps} dependencies`);
+    lines.push(`**No issues found** in ${totalDeps} changed dependencies`);
     lines.push("");
     lines.push(`${total_checked} dependencies checked, all clean.`);
   } else {
     lines.push("## \u{1F50D} Ghost Supply Chain Scan");
     lines.push("");
-    lines.push(`**${findings.length} issue${findings.length !== 1 ? "s" : ""} found** in ${totalDeps} dependencies`);
+    lines.push(`**${findings.length} concern${findings.length !== 1 ? "s" : ""} found** in ${totalDeps} changed dependencies`);
     lines.push("");
-    lines.push("| Package | Version | Risk | Issue |");
-    lines.push("|---------|---------|------|-------|");
+    lines.push("| Package | Version | Risk | Reason |");
+    lines.push("|---------|---------|------|--------|");
 
     for (const f of findings) {
       const risk = f.risk || f.risk_level || "unknown";
@@ -530,15 +581,23 @@ function buildSummary(scanResult, totalDeps) {
       const emoji = riskEmoji(risk);
       const pkgName = f.registry_url ? `[${f.package}](${f.registry_url})` : (f.package || "?");
       const dl = f.weekly_downloads != null ? ` (${Number(f.weekly_downloads).toLocaleString()}/wk)` : "";
-      lines.push(`| ${pkgName}${dl} | ${f.version || "?"} | ${emoji} ${riskLabel(risk)} | ${issue} |`);
+      const versionLabel = f.previous_version ? `${f.previous_version} -> ${f.version || "?"}` : (f.version || "?");
+      lines.push(`| ${pkgName}${dl} | ${versionLabel} | ${emoji} ${riskLabel(risk)} | ${issue} |`);
     }
 
     lines.push("");
     lines.push("<details><summary>Full scan details</summary>");
     lines.push("");
     lines.push(`${total_checked} dependencies checked, ${total_clean} clean, ${findings.length} flagged`);
+    lines.push("");
+    lines.push(`Severity counts: critical ${severityCounts.critical}, high ${severityCounts.high}, medium ${severityCounts.medium}, low ${severityCounts.low}`);
     lines.push("</details>");
   }
+
+  lines.push("");
+  lines.push(`Changed dependencies scanned: ${totalDeps}`);
+  lines.push(`New dependencies: ${totalNew}`);
+  lines.push(`Version updates: ${totalUpdated}`);
 
   lines.push("");
   lines.push("---");
@@ -701,8 +760,8 @@ async function main() {
       let deps = parser(content);
       info(`Parsed ${deps.length} dependencies from ${lockFile.relativePath}`);
 
-      // 3. Detect new/changed deps
-      deps = detectNewDeps(lockFile, deps);
+      // 3. Detect new/changed deps against the base branch lockfile
+      deps = detectChangedDeps(lockFile, deps);
 
       // Tag deps with source lockfile
       deps = deps.map((d) => ({ ...d, source: lockFile.relativePath }));
@@ -730,9 +789,9 @@ async function main() {
     return;
   }
 
-  const newDeps = allDeps.filter((d) => d.is_new);
-  if (newDeps.length > 0) {
-    info(`New/changed dependencies: ${newDeps.length} (${newDeps.map((d) => d.name).join(", ")})`);
+  const changedDeps = allDeps.filter((d) => d.is_new || d.previous_version);
+  if (changedDeps.length > 0) {
+    info(`Changed dependencies: ${changedDeps.length} (${changedDeps.map((d) => d.name).join(", ")})`);
   } else {
     info("No new or changed dependencies detected.");
     writeSummary("## \u2705 Ghost Supply Chain Scan\n\nNo new or changed dependencies to scan.");
@@ -740,17 +799,21 @@ async function main() {
   }
 
   // 4. Call Ghost API — only scan new/changed deps, not the entire tree
-  const scanResult = await callGhostScan(newDeps);
+  const scanResult = await callGhostScan(changedDeps);
   const findings = scanResult.findings || [];
 
   info(`Scan complete. ${findings.length} issue(s) found.`);
 
   // 5. Format output
-  const summary = buildSummary(scanResult, newDeps.length);
+  const summary = buildSummary(scanResult, {
+    total: changedDeps.length,
+    new: changedDeps.filter((d) => d.is_new).length,
+    updated: changedDeps.filter((d) => !d.is_new).length,
+  });
   writeSummary(summary);
 
-  // 6. Post PR comment only if there are findings
-  if (findings.length > 0 && GITHUB_EVENT_NAME === "pull_request") {
+  // 6. Post/update PR comment for PRs, even when clean
+  if (GITHUB_EVENT_NAME === "pull_request") {
     await postOrUpdatePRComment(summary);
   }
 
